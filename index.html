@@ -1,0 +1,1927 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="arc-blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>J.A.R.V.I.S — Stark Industries</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@300;400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════ CSS VARIABLES & THEMES ═══════════════ */
+:root {
+  --transition: 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+[data-theme="arc-blue"] {
+  --p:   #00e5ff; --p2: #0088ff; --p3: #00ffaa;
+  --bg1: #020b18; --bg2: #030e20; --bg3: rgba(0,229,255,0.05);
+  --glass: rgba(0,20,50,0.6); --glass-b: rgba(0,229,255,0.18);
+  --text: #c8f0ff; --dim: #5588aa; --danger: #ff4466;
+  --glow: 0 0 20px rgba(0,229,255,0.5), 0 0 60px rgba(0,136,255,0.2);
+  --scan: rgba(0,229,255,0.08);
+  --urgent: #ff4466;
+  --normal: #00e5ff;
+}
+[data-theme="stark-red"] {
+  --p:   #ff3344; --p2: #ff7700; --p3: #ffcc00;
+  --bg1: #180203; --bg2: #200308; --bg3: rgba(255,50,50,0.05);
+  --glass: rgba(50,5,5,0.65); --glass-b: rgba(255,60,60,0.2);
+  --text: #ffd0d0; --dim: #aa5566; --danger: #ff8800;
+  --glow: 0 0 20px rgba(255,50,50,0.5), 0 0 60px rgba(255,100,0,0.2);
+  --scan: rgba(255,50,50,0.07);
+  --urgent: #ff8800;
+  --normal: #ff3344;
+}
+[data-theme="cyber-gold"] {
+  --p:   #ffd700; --p2: #ff9900; --p3: #ffe566;
+  --bg1: #0d0900; --bg2: #180f00; --bg3: rgba(255,215,0,0.04);
+  --glass: rgba(30,20,0,0.65); --glass-b: rgba(255,210,0,0.2);
+  --text: #fff5cc; --dim: #aa8833; --danger: #ff4444;
+  --glow: 0 0 20px rgba(255,215,0,0.4), 0 0 60px rgba(255,140,0,0.2);
+  --scan: rgba(255,200,0,0.07);
+  --urgent: #ff4444;
+  --normal: #ffd700;
+}
+
+/* Tamaños de fuente configurables */
+body {
+  font-size: var(--font-size-base, 16px);
+}
+h1, h2, h3, .header-logo, .modal-title, .tasks-header, .calendar-month-year {
+  font-size: var(--font-size-heading, 1.2rem);
+}
+.msg-text, .task-title, .event-title {
+  font-size: var(--font-size-body, 0.9rem);
+}
+.small-text, .help-command-desc, .response-item, .work-hour-label, .day-number span {
+  font-size: var(--font-size-small, 0.75rem);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{
+  width:100%;min-height:100vh;
+  font-family:var(--font-family-base, 'Rajdhani'), sans-serif;
+  background:var(--bg1);
+  color:var(--text);
+  overflow-x:hidden;
+}
+
+body::before {
+  content:'';
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in srgb, var(--p) 12%, transparent), transparent),
+    radial-gradient(ellipse 50% 50% at 80% 100%, color-mix(in srgb, var(--p2) 8%, transparent), transparent),
+    linear-gradient(180deg, var(--bg1) 0%, var(--bg2) 100%);
+  pointer-events:none;z-index:0;
+}
+body::after {
+  content:'';
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  background-image:
+    repeating-linear-gradient(0deg, var(--scan) 0px, transparent 1px, transparent 3px),
+    repeating-linear-gradient(90deg, var(--scan) 0px, transparent 1px, transparent 60px);
+  pointer-events:none;z-index:0;opacity:0.6;
+  animation: scanShift 8s linear infinite;
+}
+@keyframes scanShift {
+  0%{background-position:0 0,0 0;}
+  100%{background-position:0 120px,0 0;}
+}
+
+#app{
+  position:relative;z-index:1;
+  min-height:100vh;
+  display:flex;
+  flex-direction:row;
+  justify-content:center;
+  align-items:flex-start;
+  padding:16px 12px 32px;
+  gap:20px;
+  flex-wrap:wrap;
+}
+
+.main-column {
+  flex: 1;
+  min-width: 300px;
+  max-width: 920px;
+}
+
+.tasks-panel {
+  width: 450px;
+  flex-shrink: 0;
+  background: var(--glass);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-b);
+  border-radius: 28px;
+  padding: 20px 16px;
+  position: relative;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: fit-content;
+  max-height: calc(100vh - 40px);
+}
+
+.tasks-panel::-webkit-scrollbar { width: 4px; }
+.tasks-panel::-webkit-scrollbar-track { background: transparent; }
+.tasks-panel::-webkit-scrollbar-thumb { background: var(--glass-b); border-radius: 2px; }
+
+.tasks-panel::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 20px;
+  height: 20px;
+  border-top: 2px solid var(--p);
+  border-left: 2px solid var(--p);
+  opacity: 0.6;
+}
+.tasks-panel::after {
+  content: '';
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 20px;
+  height: 20px;
+  border-bottom: 2px solid var(--p);
+  border-right: 2px solid var(--p);
+  opacity: 0.6;
+}
+
+.tasks-header {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--p);
+  letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--glass-b);
+}
+
+.work-btn-icon {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--glass-b);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 1rem;
+}
+.work-btn-icon:hover { background: var(--bg3); border-color: var(--p); transform: scale(1.05); }
+
+.calendar-btn-icon {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--glass-b);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 1rem;
+}
+.calendar-btn-icon:hover { background: var(--bg3); border-color: var(--p); transform: scale(1.05); }
+
+.user-badge-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-user-btn {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--glass-b);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 0.7rem;
+  color: var(--p);
+}
+.edit-user-btn:hover { background: var(--bg3); border-color: var(--p); transform: scale(1.1); }
+
+.work-modal { max-width: 580px !important; width: 95%; }
+.calendar-modal { max-width: 900px !important; width: 95%; }
+.help-modal { max-width: 750px !important; width: 95%; }
+
+/* Estilos del calendario */
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 15px;
+  padding: 10px 15px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 16px;
+}
+.calendar-nav {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.calendar-nav button {
+  background: linear-gradient(135deg, var(--p), var(--p2));
+  border: none;
+  border-radius: 30px;
+  padding: 8px 18px;
+  color: #000;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.calendar-nav button:hover {
+  transform: scale(1.05);
+  box-shadow: var(--glow);
+}
+.calendar-month-year {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.3rem;
+  color: var(--p);
+  text-shadow: var(--glow);
+}
+.btn-today {
+  background: transparent;
+  border: 1px solid var(--p);
+  border-radius: 30px;
+  padding: 8px 20px;
+  color: var(--p);
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.btn-today:hover {
+  background: var(--bg3);
+  box-shadow: var(--glow);
+}
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  margin-bottom: 10px;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.75rem;
+  color: var(--p);
+  font-weight: 600;
+}
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+.calendar-day {
+  min-height: 100px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--glass-b);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 0.85rem;
+  font-weight: 500;
+  position: relative;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+}
+.calendar-day:hover {
+  background: var(--bg3);
+  border-color: var(--p);
+  transform: scale(1.01);
+}
+.calendar-day.has-events {
+  border-color: var(--p);
+  box-shadow: 0 0 8px var(--p);
+  background: color-mix(in srgb, var(--p) 8%, transparent);
+}
+.calendar-day.today {
+  background: color-mix(in srgb, var(--p) 20%, transparent);
+  border-color: var(--p);
+  box-shadow: var(--glow);
+}
+.day-number {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--p);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.day-events {
+  font-size: 0.65rem;
+  color: var(--dim);
+  overflow-y: auto;
+  max-height: 65px;
+  text-align: left;
+  padding-left: 4px;
+}
+.day-event-item {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+  cursor: pointer;
+  transition: var(--transition);
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.day-event-item:hover {
+  background: rgba(0,229,255,0.2);
+  color: var(--p);
+}
+.day-event-item.urgente {
+  color: var(--danger);
+  border-left: 2px solid var(--danger);
+  padding-left: 6px;
+}
+.day-event-item.normal {
+  color: var(--normal);
+  border-left: 2px solid var(--normal);
+  padding-left: 6px;
+}
+.event-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--p);
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 4px var(--p);
+}
+.calendar-events-list {
+  margin-top: 20px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: rgba(0,0,0,0.2);
+  border-radius: 16px;
+  padding: 12px;
+}
+.calendar-events-list-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.85rem;
+  color: var(--p);
+  margin-bottom: 12px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--glass-b);
+}
+.event-item {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--glass-b);
+  border-radius: 14px;
+  padding: 12px 15px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  transition: var(--transition);
+}
+.event-item:hover {
+  border-color: var(--p);
+  background: rgba(0,0,0,0.4);
+}
+.event-info {
+  flex: 1;
+}
+.event-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--p);
+  margin-bottom: 4px;
+}
+.event-description {
+  font-size: 0.75rem;
+  color: var(--dim);
+}
+.event-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 5px;
+}
+.event-priority {
+  font-size: 0.65rem;
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+.event-priority.urgente {
+  background: rgba(255,68,102,0.2);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+.event-priority.normal {
+  background: rgba(0,229,255,0.15);
+  color: var(--normal);
+  border: 1px solid var(--normal);
+}
+.event-actions {
+  display: flex;
+  gap: 8px;
+}
+.event-actions button {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--glass-b);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--dim);
+  cursor: pointer;
+  transition: var(--transition);
+  font-size: 0.75rem;
+}
+.event-actions button:hover {
+  background: var(--bg3);
+  color: var(--p);
+  border-color: var(--p);
+}
+.add-event-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 20px;
+  background: rgba(0,0,0,0.25);
+  border-radius: 20px;
+  border: 1px solid var(--glass-b);
+}
+.add-event-form h4 {
+  font-family: 'Orbitron', sans-serif;
+  color: var(--p);
+  font-size: 0.9rem;
+  margin-bottom: 5px;
+}
+.add-event-form input, .add-event-form textarea, .add-event-form select {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--glass-b);
+  border-radius: 12px;
+  padding: 10px 14px;
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.85rem;
+  outline: none;
+  transition: var(--transition);
+}
+.add-event-form input:focus, .add-event-form textarea:focus, .add-event-form select:focus {
+  border-color: var(--p);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--p) 20%, transparent);
+}
+.add-event-form textarea {
+  resize: vertical;
+  min-height: 70px;
+}
+.form-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 5px;
+}
+.btn-event-save {
+  background: linear-gradient(135deg, var(--p), var(--p2));
+  border: none;
+  border-radius: 25px;
+  padding: 10px 20px;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #000;
+  cursor: pointer;
+  transition: var(--transition);
+  flex: 1;
+}
+.btn-event-cancel {
+  background: transparent;
+  border: 1px solid var(--glass-b);
+  border-radius: 25px;
+  padding: 10px 20px;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--dim);
+  cursor: pointer;
+  transition: var(--transition);
+  flex: 1;
+}
+.btn-event-save:hover, .btn-event-cancel:hover {
+  transform: scale(1.02);
+  box-shadow: var(--glow);
+}
+.btn-event-cancel:hover {
+  background: var(--bg3);
+  border-color: var(--p);
+  color: var(--p);
+}
+
+/* AYUDA MEJORADA */
+.help-section {
+  margin-bottom: 24px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 16px;
+  padding: 12px;
+}
+.help-section-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 0.85rem;
+  color: var(--p);
+  margin-bottom: 12px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--glass-b);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.help-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+.help-command-list::-webkit-scrollbar {
+  width: 4px;
+}
+.help-command-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.help-command-list::-webkit-scrollbar-thumb {
+  background: var(--glass-b);
+  border-radius: 2px;
+}
+.help-command-item {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--glass-b);
+  border-radius: 10px;
+  padding: 10px 12px;
+  transition: var(--transition);
+}
+.help-command-item:hover {
+  border-color: var(--p);
+  background: rgba(0,0,0,0.4);
+}
+.help-command-text {
+  font-family: 'Share Tech Mono', monospace;
+  color: var(--p);
+  font-size: 0.75rem;
+  font-weight: 600;
+  word-break: break-word;
+}
+.help-command-desc {
+  font-size: 0.7rem;
+  color: var(--dim);
+  margin-top: 6px;
+}
+.help-badge {
+  display: inline-block;
+  background: var(--bg3);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 0.6rem;
+  margin-left: 8px;
+  color: var(--p);
+}
+
+.work-hours-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
+.work-hour-item { background: rgba(0,0,0,0.2); border: 1px solid var(--glass-b); border-radius: 12px; padding: 10px; }
+.work-hour-label { font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; color: var(--p); margin-bottom: 6px; display: flex; align-items: center; gap: 5px; }
+.work-hour-input { width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--glass-b); border-radius: 8px; padding: 8px; color: var(--text); font-family: 'Rajdhani', sans-serif; font-size: 0.9rem; }
+.work-hour-message { width: 100%; background: rgba(0,0,0,0.4); border: 1px solid var(--glass-b); border-radius: 8px; padding: 6px 8px; color: var(--text); font-family: 'Rajdhani', sans-serif; font-size: 0.7rem; margin-top: 6px; resize: vertical; min-height: 50px; }
+.work-hour-status { font-size: 0.65rem; margin-top: 6px; padding: 4px; border-radius: 6px; text-align: center; }
+.work-hour-status.pending { background: rgba(255,200,0,0.15); color: #ffcc00; }
+.work-hour-status.completed { background: rgba(0,255,136,0.15); color: #00ff88; }
+.work-hour-status.alert { background: rgba(255,68,102,0.2); color: var(--danger); animation: pulseAlert 1s infinite; }
+@keyframes pulseAlert { 0%,100%{opacity:1;}50%{opacity:0.6;} }
+
+.weekdays { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; justify-content: center; }
+.weekday-check { display: flex; flex-direction: column; align-items: center; gap: 4px; background: rgba(0,0,0,0.2); padding: 5px 8px; border-radius: 10px; }
+.weekday-check label { font-size: 0.7rem; color: var(--dim); }
+.weekday-check input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--p); }
+
+.responses-log { background: rgba(0,0,0,0.2); border-radius: 12px; padding: 10px; margin-top: 12px; max-height: 200px; overflow-y: auto; }
+.responses-log-title { font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; color: var(--p); margin-bottom: 8px; }
+.response-item { font-size: 0.7rem; padding: 6px; border-bottom: 1px solid var(--glass-b); display: flex; gap: 8px; }
+.response-time { color: var(--p); font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; }
+.response-text { color: var(--text); flex: 1; }
+
+.btn-work { background: linear-gradient(135deg, var(--p), var(--p2)); border: none; border-radius: 20px; padding: 10px; font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 0.8rem; color: #000; cursor: pointer; transition: var(--transition); width: 100%; margin-top: 8px; }
+.btn-work:hover { transform: scale(1.02); box-shadow: var(--glow); }
+
+.task-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.task-form input, .task-form textarea, .task-form select {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--glass-b);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.85rem;
+  outline: none;
+}
+.task-form input:focus, .task-form textarea:focus, .task-form select:focus { border-color: var(--p); box-shadow: 0 0 0 2px color-mix(in srgb, var(--p) 20%, transparent); }
+.task-form textarea { min-height: 60px; resize: vertical; }
+.task-form-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.task-form-row select { flex: 1; }
+.task-form-row input[type="date"] { flex: 1; }
+.task-form-row input[type="time"] { flex: 1; }
+
+.btn-task { background: linear-gradient(135deg, var(--p), var(--p2)); border: none; border-radius: 20px; padding: 8px 16px; font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 0.8rem; color: #000; cursor: pointer; transition: var(--transition); }
+.btn-task:hover { transform: scale(1.02); box-shadow: var(--glow); }
+.btn-task-outline { background: transparent; border: 1px solid var(--glass-b); color: var(--p); }
+.btn-task-outline:hover { background: var(--bg3); border-color: var(--p); }
+
+.tasks-tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--glass-b); padding-bottom: 8px; }
+.task-tab { flex: 1; text-align: center; padding: 6px 0; font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; color: var(--dim); cursor: pointer; border-radius: 6px; }
+.task-tab.active { background: var(--bg3); color: var(--p); border: 1px solid var(--glass-b); }
+
+.task-list { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.task-list::-webkit-scrollbar { width: 4px; }
+.task-list::-webkit-scrollbar-track { background: transparent; }
+.task-list::-webkit-scrollbar-thumb { background: var(--glass-b); border-radius: 2px; }
+
+.task-item { background: rgba(0,0,0,0.3); border: 1px solid var(--glass-b); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.task-item:hover { border-color: var(--p); }
+.task-item.completed { opacity: 0.6; text-decoration: line-through; }
+.task-item-header { display: flex; align-items: center; gap: 10px; }
+.task-check { width: 18px; height: 18px; cursor: pointer; accent-color: var(--p); }
+.task-title { flex: 1; font-weight: 600; font-size: 0.9rem; }
+.task-priority { font-size: 0.65rem; padding: 2px 8px; border-radius: 20px; }
+.task-priority.urgente { background: rgba(255,68,102,0.2); color: var(--urgent); border: 1px solid var(--urgent); }
+.task-priority.normal { background: rgba(0,229,255,0.15); color: var(--normal); border: 1px solid var(--normal); }
+.task-datetime { font-size: 0.65rem; color: var(--dim); font-family: 'Share Tech Mono', monospace; display: flex; gap: 8px; flex-wrap: wrap; }
+.task-description { font-size: 0.75rem; color: var(--dim); padding-left: 28px; }
+.task-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.task-actions button { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 0.8rem; padding: 4px 8px; border-radius: 6px; }
+.task-actions button:hover { background: var(--glass); color: var(--p); }
+.tasks-footer { display: flex; gap: 10px; margin-top: 8px; border-top: 1px solid var(--glass-b); padding-top: 12px; flex-wrap: wrap; }
+
+#startOverlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.97);backdrop-filter:blur(16px);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;transition:opacity 0.6s, visibility 0.6s;}
+#startOverlay.hide{opacity:0;visibility:hidden;pointer-events:none;}
+.overlay-logo{font-family:'Orbitron',sans-serif;font-size:clamp(2rem,8vw,4rem);font-weight:900;color:var(--p);text-shadow:var(--glow);letter-spacing:0.18em;animation:logoPulse 2s ease-in-out infinite;}
+@keyframes logoPulse{0%,100%{opacity:1;}50%{opacity:0.7;}}
+.overlay-sub{font-family:'Share Tech Mono',monospace;font-size:0.8rem;color:var(--dim);letter-spacing:0.3em;text-transform:uppercase;text-align:center;padding:0 20px;}
+.overlay-arc{width:160px;height:160px;position:relative;animation:spinSlow 6s linear infinite;}
+.overlay-arc svg{width:100%;height:100%;}
+@keyframes spinSlow{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+.btn-start{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;letter-spacing:0.2em;padding:18px 52px;background:linear-gradient(135deg, var(--p), var(--p2));color:#000;border:none;border-radius:60px;cursor:pointer;box-shadow:var(--glow);transition:var(--transition);position:relative;overflow:hidden;}
+.btn-start::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.3),transparent);animation:shimmer 2s infinite;}
+@keyframes shimmer{0%{left:-100%;}100%{left:200%;}}
+.btn-start:hover{transform:scale(1.06);box-shadow:var(--glow),0 0 80px color-mix(in srgb,var(--p) 50%,transparent);}
+#header{width:100%;display:flex;align-items:center;justify-content:space-between;padding:12px 0;margin-bottom:8px;border-bottom:1px solid var(--glass-b);}
+.header-logo{font-family:'Orbitron',sans-serif;font-weight:800;font-size:1.5rem;color:var(--p);text-shadow:var(--glow);letter-spacing:0.15em;}
+.header-logo span{font-size:0.55rem;display:block;color:var(--dim);letter-spacing:0.4em;}
+.header-right{display:flex;align-items:center;gap:8px;}
+.hdr-btn{background:var(--glass);border:1px solid var(--glass-b);border-radius:10px;color:var(--p);width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1rem;transition:var(--transition);backdrop-filter:blur(8px);}
+.hdr-btn:hover{background:var(--bg3);box-shadow:0 0 12px color-mix(in srgb,var(--p) 30%,transparent);}
+.theme-switcher{display:flex;gap:6px;}
+.theme-dot{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:var(--transition);}
+.theme-dot:hover,.theme-dot.active{border-color:#fff;transform:scale(1.2);}
+.theme-dot[data-t="arc-blue"]{background:radial-gradient(#00e5ff,#0088ff);}
+.theme-dot[data-t="stark-red"]{background:radial-gradient(#ff3344,#ff7700);}
+.theme-dot[data-t="cyber-gold"]{background:radial-gradient(#ffd700,#ff9900);}
+#infoBar{width:100%;display:flex;align-items:center;justify-content:space-between;padding:6px 16px;background:var(--glass);backdrop-filter:blur(12px);border:1px solid var(--glass-b);border-radius:10px;margin-bottom:16px;font-family:'Share Tech Mono',monospace;font-size:0.72rem;color:var(--dim);}
+#infoBar span{display:flex;align-items:center;gap:6px;}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--p);animation:blink 1.4s infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.2;}}
+.dot.red{background:var(--danger);}
+.dot.green{background:#00ff88;}
+.dot.yellow{background:#ffcc00;}
+#bridgeStatus{display:flex;align-items:center;gap:6px;}
+#mainCard{width:100%;background:var(--glass);backdrop-filter:blur(24px);border:1px solid var(--glass-b);border-radius:28px;padding:28px 24px;position:relative;overflow:hidden;margin-bottom:16px;}
+#mainCard::before,#mainCard::after,.card-br::before,.card-br::after{content:'';position:absolute;width:20px;height:20px;border-color:var(--p);border-style:solid;opacity:0.6;}
+#mainCard::before{top:12px;left:12px;border-width:2px 0 0 2px;}
+#mainCard::after{top:12px;right:12px;border-width:2px 2px 0 0;}
+.card-br::before{bottom:12px;left:12px;border-width:0 0 2px 2px;}
+.card-br::after{bottom:12px;right:12px;border-width:0 2px 2px 0;}
+#hudWrap{display:flex;justify-content:center;align-items:center;margin:8px 0 24px;position:relative;}
+#hudSvg{width:220px;height:220px;position:absolute;pointer-events:none;}
+.hud-ring-outer{animation:rotateRing 12s linear infinite;}
+.hud-ring-mid{animation:rotateRing 7s linear infinite reverse;}
+.hud-ring-inner{animation:rotateRing 4s linear infinite;}
+@keyframes rotateRing{from{transform:rotate(0deg)transform-origin:center;}to{transform:rotate(360deg);}}
+.hud-ring-outer,.hud-ring-mid,.hud-ring-inner{transform-origin:110px 110px;}
+#voiceCircle{width:160px;height:160px;border-radius:50%;background:radial-gradient(circle at 38% 38%, color-mix(in srgb,var(--p) 15%,var(--bg2)), var(--bg2));border:2px solid var(--glass-b);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;transition:var(--transition);position:relative;z-index:2;cursor:default;box-shadow:inset 0 0 30px rgba(0,0,0,0.5);}
+#voiceCircle.active{background:radial-gradient(circle, color-mix(in srgb,var(--p) 20%, var(--bg2)), var(--bg2));border-color:var(--p);box-shadow:var(--glow),inset 0 0 30px rgba(0,0,0,0.5);}
+#voiceCircle.listening{animation:circlePulse 0.4s ease-in-out infinite alternate;}
+@keyframes circlePulse{from{box-shadow:var(--glow),inset 0 0 30px rgba(0,0,0,0.5);}to{box-shadow:0 0 50px color-mix(in srgb,var(--p) 80%,transparent),0 0 100px color-mix(in srgb,var(--p) 40%,transparent),inset 0 0 30px rgba(0,0,0,0.5);}}
+#micIcon{font-size:3rem;transition:var(--transition);}
+#voiceLabel{font-family:'Share Tech Mono',monospace;font-size:0.62rem;color:var(--dim);text-align:center;letter-spacing:0.12em;}
+#volBars{display:flex;align-items:flex-end;gap:2px;height:22px;}
+.vbar{width:4px;background:var(--p);border-radius:2px;opacity:0.7;transition:height 0.05s;}
+#statusRow{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;background:var(--glass);border:1px solid var(--glass-b);font-family:'Share Tech Mono',monospace;font-size:0.72rem;color:var(--p);}
+#micStatusText{font-family:'Share Tech Mono',monospace;font-size:0.7rem;color:var(--dim);display:flex;align-items:center;gap:6px;}
+#quickActions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:20px;}
+.qa-btn{font-family:'Rajdhani',sans-serif;font-size:0.78rem;font-weight:600;letter-spacing:0.08em;padding:7px 18px;background:var(--glass);border:1px solid var(--glass-b);color:var(--p);border-radius:20px;cursor:pointer;transition:var(--transition);}
+.qa-btn:hover{background:var(--bg3);border-color:var(--p);box-shadow:0 0 10px color-mix(in srgb,var(--p) 30%,transparent);}
+#conversation{background:rgba(0,0,0,0.25);border:1px solid var(--glass-b);border-radius:18px;padding:16px;max-height:340px;overflow-y:auto;scroll-behavior:smooth;}
+#conversation::-webkit-scrollbar{width:4px;}
+#conversation::-webkit-scrollbar-track{background:transparent;}
+#conversation::-webkit-scrollbar-thumb{background:var(--glass-b);border-radius:2px;}
+.msg{display:flex;gap:10px;margin-bottom:14px;animation:msgIn 0.3s ease;}
+@keyframes msgIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+.msg.user{flex-direction:row-reverse;}
+.msg-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;flex-shrink:0;margin-top:2px;background:var(--glass);border:1px solid var(--glass-b);}
+.msg.jarvis .msg-avatar{color:var(--p);}
+.msg.user .msg-avatar{color:var(--p2);}
+.msg-body{max-width:78%;}
+.msg-label{font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:var(--dim);margin-bottom:4px;letter-spacing:0.12em;}
+.msg.user .msg-label{text-align:right;}
+.msg-text{padding:10px 14px;border-radius:14px;font-size:0.9rem;line-height:1.5;}
+.msg.jarvis .msg-text{background:rgba(0,0,0,0.3);border-left:2px solid var(--p);border-radius:4px 14px 14px 14px;}
+.msg.user .msg-text{background:color-mix(in srgb, var(--p) 12%, transparent);border-right:2px solid var(--p2);border-radius:14px 4px 14px 14px;text-align:right;}
+#typingIndicator{display:none;padding:10px 14px;background:rgba(0,0,0,0.3);border-left:2px solid var(--p);border-radius:4px 14px 14px 14px;width:fit-content;}
+.typing-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--p);margin:0 2px;animation:typeDot 1.2s infinite;}
+.typing-dot:nth-child(2){animation-delay:0.2s;}
+.typing-dot:nth-child(3){animation-delay:0.4s;}
+@keyframes typeDot{0%,80%,100%{transform:scale(0.6);opacity:0.4;}40%{transform:scale(1);opacity:1;}}
+#apiStatus{font-family:'Share Tech Mono',monospace;font-size:0.68rem;padding:8px 14px;border-radius:10px;margin-top:14px;text-align:center;background:rgba(0,0,0,0.2);border:1px solid var(--glass-b);}
+#apiStatus.online{color:#00ff88;border-left:3px solid #00ff88;}
+#apiStatus.offline{color:#ffcc00;border-left:3px solid #ffcc00;}
+#apiStatus.error{color:var(--danger);border-left:3px solid var(--danger);}
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);z-index:800;display:flex;justify-content:center;align-items:center;opacity:0;visibility:hidden;transition:var(--transition);}
+.modal-overlay.show{opacity:1;visibility:visible;}
+.modal{background:var(--glass);border:1px solid var(--glass-b);border-radius:24px;padding:28px;width:90%;max-width:500px;max-height:85vh;overflow-y:auto;backdrop-filter:blur(24px);transform:translateY(20px);transition:var(--transition);position:relative;}
+.modal-overlay.show .modal{transform:translateY(0);}
+.modal-title{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:var(--p);margin-bottom:22px;letter-spacing:0.1em;display:flex;align-items:center;gap:8px;}
+.modal-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--dim);font-size:1.2rem;cursor:pointer;transition:var(--transition);width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:50%;}
+.modal-close:hover{color:var(--danger);background:rgba(255,0,0,0.1);}
+.form-group{margin-bottom:16px;}
+.form-group label{display:block;font-size:0.72rem;color:var(--dim);margin-bottom:6px;letter-spacing:0.1em;font-family:'Share Tech Mono',monospace;}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 14px;border-radius:10px;border:1px solid var(--glass-b);background:rgba(0,0,0,0.4);color:var(--text);font-family:'Rajdhani',sans-serif;font-size:0.9rem;transition:var(--transition);outline:none;}
+.form-group textarea{min-height:80px;resize:vertical;}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--p);box-shadow:0 0 0 2px color-mix(in srgb,var(--p) 20%,transparent);}
+.form-group input[type="range"]{padding:6px 0;background:none;}
+.form-group input[type="range"]::-webkit-slider-thumb{background:var(--p);}
+.range-val{color:var(--p);font-family:'Share Tech Mono',monospace;font-size:0.8rem;}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap;}
+.btn{font-family:'Rajdhani',sans-serif;font-weight:600;font-size:0.85rem;letter-spacing:0.1em;padding:9px 22px;border-radius:20px;cursor:pointer;transition:var(--transition);border:none;}
+.btn-primary{background:linear-gradient(135deg,var(--p),var(--p2));color:#000;}
+.btn-primary:hover{box-shadow:var(--glow);}
+.btn-danger{background:rgba(255,0,0,0.1);color:var(--danger);border:1px solid var(--danger);}
+.btn-danger:hover{background:rgba(255,0,0,0.2);}
+.btn-ghost{background:var(--glass);color:var(--text);border:1px solid var(--glass-b);}
+.btn-ghost:hover{border-color:var(--p);}
+#macroList{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;max-height:280px;overflow-y:auto;}
+.macro-item{display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.3);border:1px solid var(--glass-b);border-radius:12px;padding:10px 14px;transition:var(--transition);}
+.macro-item:hover{border-color:var(--p);}
+.macro-item-info{flex:1;min-width:0;}
+.macro-trigger{font-family:'Share Tech Mono',monospace;font-size:0.72rem;color:var(--p);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.macro-action{font-size:0.78rem;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.macro-type{font-size:0.6rem;padding:2px 8px;border-radius:10px;font-family:'Share Tech Mono',monospace;flex-shrink:0;}
+.macro-type.url{background:rgba(0,200,255,0.15);color:#00c8ff;}
+.macro-type.speak{background:rgba(0,255,170,0.15);color:#00ffaa;}
+.macro-type.ws{background:rgba(255,170,0,0.15);color:#ffaa00;}
+.macro-type.search{background:rgba(200,0,255,0.15);color:#cc44ff;}
+.macro-btns{display:flex;gap:4px;}
+.macro-btns button{background:none;border:none;color:var(--dim);cursor:pointer;font-size:0.9rem;padding:4px;border-radius:6px;transition:var(--transition);}
+.macro-btns button:hover{background:var(--glass);color:var(--p);}
+.tabs{display:flex;gap:4px;margin-bottom:16px;}
+.tab{font-family:'Share Tech Mono',monospace;font-size:0.72rem;padding:7px 16px;border-radius:20px;background:none;border:1px solid var(--glass-b);color:var(--dim);cursor:pointer;transition:var(--transition);}
+.tab.active,.tab:hover{background:var(--bg3);border-color:var(--p);color:var(--p);}
+@media(max-width:600px){#hudSvg{width:180px;height:180px;}#voiceCircle{width:130px;height:130px;}#micIcon{font-size:2.4rem;}.header-logo{font-size:1.1rem;}#mainCard{padding:20px 14px;}}
+.help-btn-fixed{position:fixed;bottom:20px;right:20px;z-index:100;background:var(--glass);backdrop-filter:blur(8px);border:1px solid var(--p);color:var(--p);border-radius:50px;padding:10px 18px;font-size:0.7rem;font-family:'Share Tech Mono', monospace;cursor:pointer;transition:all 0.3s ease;display:flex;align-items:center;gap:8px;}
+.help-btn-fixed:hover{background:var(--bg3);box-shadow:var(--glow);transform:scale(1.05);}
+@media (max-width:600px){.help-btn-fixed{padding:6px 12px;font-size:0.6rem;bottom:10px;right:10px;}}
+.notification-toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:var(--glass);backdrop-filter:blur(16px);border:2px solid var(--p);border-radius:16px;padding:16px 24px;z-index:1000;display:flex;align-items:center;gap:12px;box-shadow:var(--glow);animation:slideUp 0.3s ease;font-family:'Rajdhani',sans-serif;max-width:90%;}
+@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(20px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+.notification-toast button{background:var(--p);border:none;border-radius:8px;padding:4px 12px;cursor:pointer;font-weight:bold;color:#000;}
+
+.mic-permission-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--glass);
+  backdrop-filter: blur(24px);
+  border: 2px solid var(--p);
+  border-radius: 28px;
+  padding: 30px;
+  z-index: 2000;
+  text-align: center;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: var(--glow);
+  animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+.mic-permission-panel h3 {
+  font-family: 'Orbitron', sans-serif;
+  color: var(--p);
+  margin-bottom: 15px;
+}
+.mic-permission-panel p {
+  margin-bottom: 20px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.mic-permission-panel button {
+  background: linear-gradient(135deg, var(--p), var(--p2));
+  border: none;
+  border-radius: 30px;
+  padding: 12px 24px;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: bold;
+  font-size: 1rem;
+  color: #000;
+  cursor: pointer;
+  margin: 5px;
+  transition: var(--transition);
+}
+.mic-permission-panel button:hover {
+  transform: scale(1.05);
+  box-shadow: var(--glow);
+}
+.mic-permission-panel .btn-secondary {
+  background: transparent;
+  border: 1px solid var(--glass-b);
+  color: var(--dim);
+}
+.mic-permission-panel .btn-secondary:hover {
+  background: var(--bg3);
+  border-color: var(--p);
+}
+
+/* ===== NUEVOS ESTILOS PARA CHAT DE TEXTO Y SUBIDA DE ARCHIVOS ===== */
+.chat-input-container {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 16px;
+  padding: 12px;
+  border: 1px solid var(--glass-b);
+}
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.chat-input-field {
+  flex: 1;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--glass-b);
+  border-radius: 20px;
+  padding: 10px 16px;
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.85rem;
+  outline: none;
+  transition: var(--transition);
+}
+.chat-input-field:focus {
+  border-color: var(--p);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--p) 20%, transparent);
+}
+.chat-send-btn {
+  background: linear-gradient(135deg, var(--p), var(--p2));
+  border: none;
+  border-radius: 20px;
+  padding: 10px 18px;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: #000;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.chat-send-btn:hover {
+  transform: scale(1.02);
+  box-shadow: var(--glow);
+}
+.file-upload-btn {
+  background: var(--glass);
+  border: 1px solid var(--glass-b);
+  border-radius: 20px;
+  padding: 10px 18px;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--p);
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.file-upload-btn:hover {
+  background: var(--bg3);
+  border-color: var(--p);
+  transform: scale(1.02);
+}
+.file-upload-input {
+  display: none;
+}
+.file-analysis-preview {
+  background: rgba(0,0,0,0.3);
+  border-radius: 12px;
+  padding: 10px;
+  margin-top: 8px;
+  font-size: 0.7rem;
+  color: var(--dim);
+  border-left: 2px solid var(--p);
+}
+</style>
+</head>
+<body>
+
+<div id="startOverlay">
+  <div class="overlay-logo">J.A.R.V.I.S</div>
+  <div class="overlay-sub">Just A Rather Very Intelligent System<br>Stark Industries — v3.0</div>
+  <div class="overlay-arc"><svg viewBox="0 0 220 220" fill="none"><circle cx="110" cy="110" r="100" stroke="var(--p)" stroke-width="1" stroke-dasharray="8 6" opacity="0.5"/><circle cx="110" cy="110" r="80" stroke="var(--p)" stroke-width="1.5" stroke-dasharray="4 8" opacity="0.7"/><circle cx="110" cy="110" r="55" stroke="var(--p)" stroke-width="2" opacity="0.9"/><circle cx="110" cy="110" r="30" fill="var(--bg2)" stroke="var(--p)" stroke-width="2"/><text x="110" y="116" text-anchor="middle" fill="var(--p)" font-family="Orbitron" font-size="14" font-weight="800">SI</text></svg></div>
+  <button class="btn-start" id="startBtn">▶ INICIAR SISTEMA</button>
+  <div class="overlay-sub" style="font-size:0.68rem;opacity:0.6;">Micrófono siempre activo · Ducking de audio · Macros · Integración Windows</div>
+</div>
+
+<div id="app">
+  <div class="main-column">
+    <div id="header">
+      <div class="header-logo">J.A.R.V.I.S <span>STARK INDUSTRIES AI CORE</span></div>
+      <div class="header-right">
+        <div class="theme-switcher">
+          <div class="theme-dot active" data-t="arc-blue" title="ARC Blue" onclick="setTheme('arc-blue')"></div>
+          <div class="theme-dot" data-t="stark-red" title="Stark Red" onclick="setTheme('stark-red')"></div>
+          <div class="theme-dot" data-t="cyber-gold" title="Cyber Gold" onclick="setTheme('cyber-gold')"></div>
+        </div>
+        <div class="hdr-btn" title="Configuración" onclick="openModal('settingsModal')">⚙️</div>
+        <div class="hdr-btn" title="Macros" onclick="openModal('macrosModal')">🎯</div>
+        <div class="hdr-btn" title="Backup/Restore" onclick="openModal('backupModal')">💾</div>
+      </div>
+    </div>
+    <div id="infoBar">
+      <span><div class="dot" id="micDot"></div><span id="timeDisplay">--:--:--</span></span>
+      <span id="dateDisplay" style="display:none;"></span>
+      <span id="bridgeStatus"><div class="dot yellow" id="bridgeDot"></div><span id="bridgeLabel">PUENTE: DESCONECTADO</span></span>
+    </div>
+    <div id="mainCard">
+      <div class="card-br"></div>
+      <div id="hudWrap">
+        <svg id="hudSvg" viewBox="0 0 220 220"><g class="hud-ring-outer"><circle cx="110" cy="110" r="105" stroke="var(--p)" stroke-width="1" stroke-dasharray="12 8" opacity="0.25"/><circle cx="110" cy="10" r="3" fill="var(--p)" opacity="0.6"/><circle cx="110" cy="210" r="3" fill="var(--p)" opacity="0.6"/></g><g class="hud-ring-mid"><circle cx="110" cy="110" r="90" stroke="var(--p)" stroke-width="1" stroke-dasharray="4 10" opacity="0.35"/><rect x="106" y="20" width="8" height="3" fill="var(--p)" opacity="0.7" rx="1"/><rect x="106" y="197" width="8" height="3" fill="var(--p)" opacity="0.7" rx="1"/><rect x="20" y="107" width="3" height="6" fill="var(--p)" opacity="0.7" rx="1"/><rect x="197" y="107" width="3" height="6" fill="var(--p)" opacity="0.7" rx="1"/></g><g class="hud-ring-inner"><circle cx="110" cy="110" r="84" stroke="var(--p2)" stroke-width="1.5" stroke-dasharray="3 5" opacity="0.4"/></g></svg>
+        <div id="voiceCircle"><div id="micIcon">🎤</div><div id="voiceLabel">STANDBY</div><div id="volBars"><div class="vbar" style="height:6px" id="vb0"></div><div class="vbar" style="height:8px" id="vb1"></div><div class="vbar" style="height:12px" id="vb2"></div><div class="vbar" style="height:8px" id="vb3"></div><div class="vbar" style="height:6px" id="vb4"></div><div class="vbar" style="height:10px" id="vb5"></div><div class="vbar" style="height:7px" id="vb6"></div></div></div>
+      </div>
+      <div id="statusRow">
+        <div class="user-badge-container">
+          <span class="badge" id="userBadge">👤 SIN IDENTIFICAR</span>
+          <div class="edit-user-btn" title="Editar nombre de usuario" onclick="editUserName()">✏️</div>
+        </div>
+        <span id="micStatusText"><div class="dot" id="micDot2"></div><span id="micStatusLabel">Sistema inactivo</span></span>
+      </div>
+      <div id="quickActions">
+        <button class="qa-btn" id="musicBtn" onclick="accionMusica()">🎵 Música</button>
+        <button class="qa-btn" id="weatherBtn" onclick="accionClima()">🌤️ Clima</button>
+        <button class="qa-btn" onclick="accionHora()">🕐 Hora</button>
+        <button class="qa-btn" id="stopBtn" onclick="stopSpeaking()">⏹️ Detener</button>
+        <button class="qa-btn" id="clearBtn" onclick="clearConversation()">🗑️ Limpiar</button>
+        <button class="qa-btn" id="forgetBtn" onclick="forgetUser()">👤 Olvidar</button>
+      </div>
+      <div id="conversation">
+        <div class="msg jarvis"><div class="msg-avatar">⚡</div><div class="msg-body"><div class="msg-label">J.A.R.V.I.S</div><div class="msg-text">Sistema en espera. Presione <strong>INICIAR</strong> para activar el protocolo de escucha permanente. <br><small style="opacity:0.6">Comandos: "Abrir calendario", "Agendar [evento]", "Leer página", "Leer encabezados", "Abrir youtube"</small></div></div></div>
+        <div id="typingIndicator" class="msg jarvis"><div class="msg-avatar">⚡</div><div class="msg-body"><div class="msg-label">J.A.R.V.I.S</div><div class="msg-text" style="display:flex;align-items:center;gap:4px;"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div></div></div>
+      </div>
+      
+      <!-- NUEVO: CHAT DE TEXTO Y SUBIDA DE ARCHIVOS -->
+      <div class="chat-input-container">
+        <div class="chat-input-row">
+          <input type="text" id="textChatInput" class="chat-input-field" placeholder="Escribe un mensaje para J.A.R.V.I.S..." onkeypress="if(event.key==='Enter') sendTextMessage()">
+          <button class="chat-send-btn" onclick="sendTextMessage()">📤 ENVIAR</button>
+          <button class="file-upload-btn" onclick="document.getElementById('fileUploadInput').click()">📎 CARGAR ARCHIVO</button>
+          <input type="file" id="fileUploadInput" class="file-upload-input" accept=".txt,.json,.csv,.html,.xml,.js,.css,.log,.md" onchange="analyzeFile(this)">
+        </div>
+        <div id="fileAnalysisPreview" class="file-analysis-preview" style="display: none;"></div>
+      </div>
+      
+      <div id="apiStatus">🔌 Verificando conexión con Groq...</div>
+    </div>
+  </div>
+
+  <div class="tasks-panel">
+    <div class="tasks-header">
+      📋 SISTEMA DE TAREAS
+      <div style="display: flex; gap: 8px;">
+        <div class="calendar-btn-icon" title="Calendario" onclick="openCalendarModal()">📅</div>
+        <div class="work-btn-icon" title="Control de Jornada Laboral" onclick="openModal('workModal')">🏢</div>
+      </div>
+    </div>
+    
+    <div class="task-form">
+      <input type="text" id="taskTitle" placeholder="Título de la tarea" maxlength="100">
+      <textarea id="taskDesc" placeholder="Descripción (opcional)" rows="2"></textarea>
+      <div class="task-form-row">
+        <select id="taskPriority">
+          <option value="normal">🟢 Normal</option>
+          <option value="urgente">🔴 Urgente</option>
+        </select>
+      </div>
+      <div class="task-form-row">
+        <input type="date" id="taskDate" placeholder="Fecha">
+        <input type="time" id="taskTime" placeholder="Hora">
+      </div>
+      <button class="btn-task" id="addTaskBtn">➕ AGREGAR RECORDATORIO</button>
+    </div>
+
+    <div class="tasks-tabs">
+      <div class="task-tab active" data-tab="pending">📌 PENDIENTES</div>
+      <div class="task-tab" data-tab="completed">✅ COMPLETADAS</div>
+    </div>
+
+    <div class="task-list" id="taskList"></div>
+
+    <div class="tasks-footer">
+      <button class="btn-task btn-task-outline" id="clearCompletedBtn">🗑️ LIMPIAR COMPLETADAS</button>
+      <button class="btn-task btn-task-outline" id="checkRemindersBtn">🔔 VERIFICAR RECORDATORIOS</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DE CALENDARIO -->
+<div class="modal-overlay" id="calendarModal">
+  <div class="modal calendar-modal">
+    <button class="modal-close" onclick="closeModal('calendarModal')">✕</button>
+    <div class="modal-title">📅 CALENDARIO DE EVENTOS</div>
+    <div class="calendar-header">
+      <div class="calendar-nav">
+        <button onclick="changeMonth(-1)">◀ Mes Anterior</button>
+        <span class="calendar-month-year" id="calendarMonthYear"></span>
+        <button onclick="changeMonth(1)">Mes Siguiente ▶</button>
+      </div>
+      <button class="btn-today" onclick="goToToday()">📍 HOY</button>
+    </div>
+    <div class="calendar-weekdays"><span>DOM</span><span>LUN</span><span>MAR</span><span>MIÉ</span><span>JUE</span><span>VIE</span><span>SÁB</span></div>
+    <div class="calendar-days" id="calendarDays"></div>
+    <div class="calendar-events-list" id="calendarEventsList"><div style="text-align:center; padding:25px; color:var(--dim);">Seleccione una fecha para ver los eventos</div></div>
+    <div class="add-event-form" id="addEventForm" style="display:none;">
+      <h4>📝 Agregar Evento</h4>
+      <input type="text" id="eventTitle" placeholder="Título del evento">
+      <textarea id="eventDesc" placeholder="Descripción (opcional)" rows="2"></textarea>
+      <select id="eventPriority"><option value="normal">🟢 Normal</option><option value="urgente">🔴 Urgente</option></select>
+      <input type="time" id="eventTime" placeholder="Hora (opcional)">
+      <div class="form-buttons"><button class="btn-event-save" onclick="addCalendarEvent()">➕ Guardar Evento</button><button class="btn-event-cancel" onclick="cancelAddEvent()">Cancelar</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DE AYUDA MEJORADO - DINÁMICO -->
+<div class="modal-overlay" id="helpModal">
+  <div class="modal help-modal">
+    <button class="modal-close" onclick="closeModal('helpModal')">✕</button>
+    <div class="modal-title">🎤 COMANDOS DE VOZ · J.A.R.V.I.S</div>
+    <div id="dynamicHelpContent" style="max-height: 65vh; overflow-y: auto;">
+      <!-- El contenido se generará dinámicamente con JavaScript -->
+    </div>
+    <div class="modal-actions" style="margin-top: 20px;">
+      <button class="btn btn-primary" onclick="closeModal('helpModal')">CERRAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONTROL LABORAL -->
+<div class="modal-overlay" id="workModal">
+  <div class="modal work-modal">
+    <button class="modal-close" onclick="closeModal('workModal')">✕</button>
+    <div class="modal-title">🏢 CONTROL DE JORNADA LABORAL</div>
+    <div class="work-control-title" style="margin-bottom:10px; font-size:0.8rem;">⏰ Configure los horarios y mensajes de recordatorio</div>
+    <div class="work-hours-grid">
+      <div class="work-hour-item"><div class="work-hour-label">🚪 INGRESO AL TRABAJO</div><input type="time" id="workIngreso" class="work-hour-input" value="10:00"><textarea id="msgIngreso" class="work-hour-message" rows="2">🌟 Buenos días, señor. ¡Excelente día para trabajar! Que tenga un inicio positivo.</textarea><div id="ingresoStatus" class="work-hour-status pending">⏳ Esperando</div></div>
+      <div class="work-hour-item"><div class="work-hour-label">🍽️ HORA DE COMIDA</div><input type="time" id="workComida" class="work-hour-input" value="13:00"><textarea id="msgComida" class="work-hour-message" rows="2">🔥 Señor, es hora de tomar una pausa activa. Le recomiendo tomar un café o una pastilla.</textarea><div id="comidaStatus" class="work-hour-status pending">⏳ Esperando</div></div>
+      <div class="work-hour-item"><div class="work-hour-label">⚙️ TRABAJOS ESPECIALES</div><input type="time" id="workEspeciales" class="work-hour-input" value="17:00"><textarea id="msgEspeciales" class="work-hour-message" rows="2">👩‍🦰 ATENCIÓN: Prepararse, tiene trabajo pendiente. Es momento de enfocarse y preparar el día.</textarea><div id="especialesStatus" class="work-hour-status pending">⏳ Esperando</div></div>
+      <div class="work-hour-item"><div class="work-hour-label">🚪 HORA DE SALIDA</div><input type="time" id="workSalida" class="work-hour-input" value="19:04"><textarea id="msgSalida" class="work-hour-message" rows="2">👩‍🦰 Señor, tiene que prepararse para ir a casa. Lo están esperando. ¡Buen cierre de la mañana!</textarea><div id="salidaStatus" class="work-hour-status pending">⏳ Esperando</div></div>
+    </div>
+    <div class="work-control-title" style="margin-top:8px;">📅 DÍAS LABORALES</div>
+    <div class="weekdays" id="weekdaysContainer">
+      <div class="weekday-check"><label>Lun</label><input type="checkbox" class="workday-check" value="1" checked></div>
+      <div class="weekday-check"><label>Mar</label><input type="checkbox" class="workday-check" value="2" checked></div>
+      <div class="weekday-check"><label>Mié</label><input type="checkbox" class="workday-check" value="3" checked></div>
+      <div class="weekday-check"><label>Jue</label><input type="checkbox" class="workday-check" value="4" checked></div>
+      <div class="weekday-check"><label>Vie</label><input type="checkbox" class="workday-check" value="5" checked></div>
+      <div class="weekday-check"><label>Sáb</label><input type="checkbox" class="workday-check" value="6"></div>
+      <div class="weekday-check"><label>Dom</label><input type="checkbox" class="workday-check" value="0"></div>
+    </div>
+    <button class="btn-work" id="saveWorkHoursBtn">💾 GUARDAR CONFIGURACIÓN</button>
+    <div class="responses-log"><div class="responses-log-title">📝 REGISTRO DE RESPUESTAS DEL USUARIO</div><div id="responsesList"></div></div>
+  </div>
+</div>
+
+<!-- MODAL DE CONFIGURACIÓN -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('settingsModal')">✕</button>
+    <div class="modal-title">⚙️ CONFIGURACIÓN</div>
+    <div class="form-group"><label>GROQ API KEY</label><input type="password" id="cfgGroqKey" placeholder="gsk_..."></div>
+    <div class="form-group"><label>FUENTE (TIPO)</label><select id="cfgFontFamily"><option value="'Rajdhani',sans-serif">Rajdhani (Default)</option><option value="'Orbitron',sans-serif">Orbitron</option><option value="'Share Tech Mono',monospace">Share Tech Mono</option><option value="Arial,sans-serif">Arial</option><option value="'Segoe UI',sans-serif">Segoe UI</option></select></div>
+    <div class="form-group"><label>TAMAÑO BASE</label><input type="range" id="cfgFontSizeBase" min="12" max="28" step="1" value="16"><span class="range-val" id="fontSizeBaseVal">16px</span></div>
+    <div class="form-group"><label>Editar URL de MÚSICA</label><input type="text" id="cfgMusicUrl" placeholder="https://..."></div>
+    <div class="form-group"><label>Editar URL de CLIMA</label><input type="text" id="cfgWeatherUrl" placeholder="https://..."></div>
+    <div class="form-group"><label>VELOCIDAD — <span class="range-val" id="speedVal">0.92</span></label><input type="range" id="cfgSpeed" min="0.5" max="1.5" step="0.01" value="0.92"></div>
+    <div class="form-group"><label>TONO — <span class="range-val" id="pitchVal">0.90</span></label><input type="range" id="cfgPitch" min="0.5" max="1.5" step="0.01" value="0.90"></div>
+    <div class="form-group"><label>VOZ</label><select id="cfgVoice"><option value="">— Auto —</option></select></div>
+    <div class="form-group"><label>IDIOMA</label><select id="cfgLang"><option value="es-ES">Español</option><option value="en-US">English</option></select></div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('settingsModal')">Cancelar</button><button class="btn btn-primary" onclick="saveSettings()">💾 Guardar</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="macrosModal"><div class="modal"><button class="modal-close" onclick="closeModal('macrosModal')">✕</button><div class="modal-title">🎯 MACROS</div><div id="macroList"></div><button class="btn btn-primary" style="width:100%;" onclick="openMacroEditor(null)">＋ Nueva Macro</button></div></div>
+
+<div class="modal-overlay" id="macroEditorModal"><div class="modal"><button class="modal-close" onclick="closeModal('macroEditorModal')">✕</button><div class="modal-title" id="macroEditorTitle">➕ NUEVA MACRO</div><input type="hidden" id="macroEditId"><div class="form-group"><label>TRIGGER</label><input type="text" id="macroTrigger" placeholder="frase de activación"></div><div class="form-group"><label>NOMBRE</label><input type="text" id="macroName" placeholder="Nombre"></div><div class="form-group"><label>TIPO</label><select id="macroType" onchange="updateMacroActionLabel()"><option value="url">🌐 Abrir URL</option><option value="search">🔍 Buscar en YouTube</option><option value="speak">🔊 Responder con voz</option></select></div><div class="form-group"><label id="macroActionLabel">URL / BÚSQUEDA</label><input type="text" id="macroAction" placeholder="https://... o término de búsqueda"></div><div class="form-group"><label>RESPUESTA DE VOZ</label><input type="text" id="macroSpeak" placeholder="JARVIS dirá..."></div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal('macroEditorModal')">Cancelar</button><button class="btn btn-primary" onclick="saveMacro()">💾 Guardar</button></div></div></div>
+
+<div class="modal-overlay" id="backupModal"><div class="modal"><button class="modal-close" onclick="closeModal('backupModal')">✕</button><div class="modal-title">💾 BACKUP</div><div class="tabs"><button class="tab active" id="tabExport" onclick="switchTab('export')">📤 Exportar</button><button class="tab" id="tabImport" onclick="switchTab('import')">📥 Importar</button></div><div id="panelExport"><textarea id="exportPreview" readonly style="min-height:180px;font-family:'Share Tech Mono',monospace;font-size:0.65rem;"></textarea><div class="modal-actions"><button class="btn btn-primary" onclick="exportConfig()">📤 Descargar</button><button class="btn btn-ghost" onclick="refreshExportPreview()">🔄 Actualizar</button></div></div><div id="panelImport" style="display:none;"><textarea id="importJson" style="min-height:180px;font-family:'Share Tech Mono',monospace;font-size:0.65rem;" placeholder='{"macros":[],"settings":{}}'></textarea><input type="file" id="importFile" accept=".json" onchange="loadImportFile(event)"><div class="modal-actions"><button class="btn btn-primary" onclick="importConfig()">📥 Restaurar</button></div></div></div></div>
+
+<button class="help-btn-fixed" onclick="openHelpModal()">🎤 AYUDA</button>
+
+<script>
+'use strict';
+
+// CONFIGURACIÓN
+const DEFAULT_CONFIG = { 
+  groqKey: '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', 
+  speed: 0.92, pitch: 0.90, voiceName: '', lang: 'es-ES', 
+  bridgeUrl: 'ws://localhost:8765', theme: 'arc-blue',
+  musicUrl: 'https://www.youtube.com/results?search_query=relaxing+music',
+  weatherUrl: 'https://weather.com',
+  fontFamily: "'Rajdhani',sans-serif",
+  fontSizeBase: 16
+};
+
+const DEFAULT_MACROS = [ 
+  { id:'m1', name:'YouTube', trigger:'abrir youtube,abre youtube', type:'url', action:'https://www.youtube.com', speak:'Abriendo YouTube.' },
+  { id:'m2', name:'Google', trigger:'abrir google,abre google', type:'url', action:'https://www.google.com', speak:'Abriendo Google.' }
+];
+
+let cfg = { ...DEFAULT_CONFIG };
+let macros = [...DEFAULT_MACROS];
+let users = {};
+let currentUser = null;
+let sessionActive = false;
+let calendarEvents = [];
+let currentCalendarDate = new Date();
+let selectedCalendarDate = null;
+let knowledgeDB = [];
+let workConfig = {
+  ingreso: '10:00', comida: '13:00', especiales: '17:00', salida: '19:04',
+  mensajes: {
+    ingreso: '🌟 Buenos días, señor. ¡Excelente día para trabajar! Que tenga un inicio positivo.',
+    comida: '🔥 Señor, es hora de tomar una pausa activa. Le recomiendo tomar un café o una pastilla.',
+    especiales: '👩‍🦰 ATENCIÓN: Prepararse, tiene trabajo pendiente. Es momento de enfocarse y preparar el día.',
+    salida: '👩‍🦰 Señor, tiene que prepararse para ir a casa. Lo están esperando. ¡Buen cierre de la mañana!'
+  },
+  workDays: [1, 2, 3, 4, 5],
+  alerts: { ingreso: false, comida: false, especiales: false, salida: false },
+  responses: []
+};
+let tasks = [];
+let tasksFilter = 'pending';
+
+// Audio y reconocimiento
+let recognition = null;
+let isSpeaking = false;
+let mediaStream = null;
+let audioCtx = null;
+let gainNode = null;
+let analyser = null;
+let isMicReady = false;
+let volAnimId = null;
+let availableVoices = [];
+let selectedVoice = null;
+let mediaStreamActive = false;
+let apiAvailable = false;
+let activeModel = '';
+
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-70b-8192'];
+
+// ========== NUEVAS FUNCIONES: CHAT DE TEXTO Y ANÁLISIS DE ARCHIVOS ==========
+function sendTextMessage() {
+  const input = document.getElementById('textChatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  addMsg('user', text);
+  if (sessionActive) {
+    processCommand(text);
+  } else {
+    speak('El sistema no está activo. Inicie JARVIS primero.');
+  }
+}
+
+function analyzeFile(inputElement) {
+  const file = inputElement.files[0];
+  if (!file) return;
+  
+  const previewDiv = document.getElementById('fileAnalysisPreview');
+  const reader = new FileReader();
+  
+  reader.onload = function(e) {
+    const content = e.target.result;
+    const fileType = file.type || file.name.split('.').pop();
+    const fileSize = (file.size / 1024).toFixed(2);
+    let analysis = `📄 **Archivo:** ${file.name}\n📏 **Tamaño:** ${fileSize} KB\n📑 **Tipo:** ${fileType}\n\n`;
+    
+    // Analizar según el tipo
+    if (file.name.endsWith('.json')) {
+      try {
+        const jsonData = JSON.parse(content);
+        analysis += `🔍 **Estructura JSON:**\n${JSON.stringify(jsonData, null, 2).substring(0, 1000)}${JSON.stringify(jsonData, null, 2).length > 1000 ? '...' : ''}`;
+      } catch(e) {
+        analysis += `⚠️ **Error al parsear JSON:** ${e.message}`;
+      }
+    } 
+    else if (file.name.endsWith('.csv')) {
+      const lines = content.split('\n').slice(0, 10);
+      analysis += `📊 **Vista previa CSV (primeras 10 líneas):**\n${lines.join('\n').substring(0, 1500)}`;
+    }
+    else if (file.name.match(/\.(txt|md|log)$/i)) {
+      analysis += `📝 **Contenido del texto:**\n${content.substring(0, 1500)}${content.length > 1500 ? '...' : ''}`;
+    }
+    else if (file.name.match(/\.(html|xml|js|css)$/i)) {
+      analysis += `💻 **Código fuente:**\n${content.substring(0, 1500)}${content.length > 1500 ? '...' : ''}`;
+    }
+    else {
+      analysis += `📋 **Contenido del archivo:**\n${content.substring(0, 1500)}${content.length > 1500 ? '...' : ''}`;
+    }
+    
+    previewDiv.style.display = 'block';
+    previewDiv.innerHTML = `<strong>📎 ANÁLISIS DE ARCHIVO</strong><br>${analysis.replace(/\n/g, '<br>')}`;
+    
+    // Mostrar también en el chat
+    addMsg('jarvis', `📎 He analizado el archivo "${file.name}" (${fileSize} KB).\n\n${analysis.substring(0, 800)}${analysis.length > 800 ? '...' : ''}`);
+    
+    // Limpiar el input para permitir cargar otro archivo
+    inputElement.value = '';
+    
+    // Ocultar preview después de 30 segundos
+    setTimeout(() => {
+      previewDiv.style.display = 'none';
+    }, 30000);
+  };
+  
+  reader.readAsText(file, 'UTF-8');
+}
+
+function editUserName() {
+  const newName = prompt('Ingrese su nombre:', currentUser ? users[currentUser]?.name : '');
+  if (newName && newName.trim()) {
+    if (currentUser) {
+      const oldName = users[currentUser].name;
+      const newId = newName.trim().toLowerCase();
+      if (currentUser !== newId) {
+        users[newId] = { ...users[currentUser], name: newName.trim() };
+        delete users[currentUser];
+        currentUser = newId;
+      } else {
+        users[currentUser].name = newName.trim();
+      }
+      saveState();
+      updateUserBadge();
+      speak(`He cambiado su nombre de ${oldName} a ${newName.trim()}.`);
+    } else {
+      registerUser(newName.trim());
+    }
+  }
+}
+
+// ========== FUNCIONES DE AYUDA DINÁMICA MEJORADA ==========
+function generateDynamicHelp() {
+  const commands = [];
+  
+  // Comandos de calendario con ejemplos
+  commands.push({ trigger: 'abrir calendario', desc: 'Abre el calendario interactivo para gestionar eventos', example: '"abrir calendario"', category: '📅 Calendario' });
+  commands.push({ trigger: 'agendar [evento] para el [día] de [mes]', desc: 'Agenda un evento en una fecha específica', example: '"agendar reunión con cliente para el 15 de diciembre"', category: '📅 Calendario' });
+  commands.push({ trigger: 'agendar [evento] para [YYYY-MM-DD]', desc: 'Agenda un evento con formato de fecha estándar', example: '"agendar cita médica para 2025-01-20"', category: '📅 Calendario' });
+  
+  // Comandos de lectura web
+  commands.push({ trigger: 'leer página / leer esta página', desc: 'Lee todo el contenido visible de la página actual', example: '"leer página"', category: '📖 Lectura Web' });
+  commands.push({ trigger: 'leer encabezados / qué dice la página', desc: 'Lee solo los títulos principales (H1, H2, H3)', example: '"leer encabezados"', category: '📖 Lectura Web' });
+  
+  // Comandos de navegación
+  commands.push({ trigger: 'abrir youtube', desc: 'Abre YouTube en una nueva pestaña', example: '"abrir youtube"', category: '🌐 Navegación' });
+  commands.push({ trigger: 'buscar [término]', desc: 'Busca el término en Google', example: '"buscar inteligencia artificial"', category: '🌐 Navegación' });
+  commands.push({ trigger: 'buscar en youtube [término]', desc: 'Busca videos en YouTube', example: '"buscar en youtube tutorial de javascript"', category: '🌐 Navegación' });
+  commands.push({ trigger: 'reproduce [término] / pon [término]', desc: 'Busca y reproduce música/videos en YouTube', example: '"reproduce música relajante"', category: '🌐 Navegación' });
+  
+  // Comandos de información
+  commands.push({ trigger: 'qué hora es', desc: 'Muestra la hora actual', example: '"qué hora es"', category: '⏰ Información' });
+  commands.push({ trigger: 'qué fecha es', desc: 'Muestra la fecha actual', example: '"qué fecha es"', category: '⏰ Información' });
+  commands.push({ trigger: 'recordatorio', desc: 'Anuncia los recordatorios pendientes del día', example: '"recordatorio"', category: '⏰ Información' });
+  commands.push({ trigger: 'ayuda', desc: 'Abre esta ventana de ayuda interactiva', example: '"ayuda"', category: '⏰ Información' });
+  
+  // Comandos de usuario
+  commands.push({ trigger: 'me llamo [nombre] / mi nombre es [nombre]', desc: 'Registra tu nombre en el sistema', example: '"me llamo Tony"', category: '👤 Usuario' });
+  commands.push({ trigger: 'cambia mi nombre a [nombre]', desc: 'Cambia tu nombre de usuario registrado', example: '"cambia mi nombre a Stark"', category: '👤 Usuario' });
+  
+  // Comandos de chat y archivos
+  commands.push({ trigger: 'Escribir en el chat', desc: 'Usa el campo de texto para escribir mensajes manualmente', example: 'Escribe "Hola JARVIS" y presiona ENVIAR', category: '💬 Chat de Texto' });
+  commands.push({ trigger: 'Cargar archivo', desc: 'Usa el botón 📎 para subir y analizar archivos (TXT, JSON, CSV, código)', example: 'Carga un archivo .txt o .json para que JARVIS lo analice', category: '💬 Chat de Texto' });
+  
+  // Macros personalizadas
+  macros.forEach(macro => {
+    const triggers = macro.trigger.split(',').map(t => t.trim()).join(' · ');
+    let desc = '';
+    if (macro.type === 'url') desc = `Abre: ${macro.action.substring(0, 40)}${macro.action.length > 40 ? '...' : ''}`;
+    if (macro.type === 'search') desc = `Busca en YouTube: ${macro.action}`;
+    if (macro.type === 'speak') desc = `JARVIS dice: "${macro.speak}"`;
+    commands.push({ trigger: triggers, desc: desc, example: `Di: "${macro.trigger.split(',')[0].trim()}"`, category: '🎯 Macros Personalizadas', isMacro: true });
+  });
+  
+  // Agrupar por categoría
+  const categories = {};
+  commands.forEach(cmd => {
+    if (!categories[cmd.category]) categories[cmd.category] = [];
+    categories[cmd.category].push(cmd);
+  });
+  
+  // Generar HTML mejorado
+  let html = '';
+  for (const [category, cmds] of Object.entries(categories)) {
+    html += `<div class="help-section"><div class="help-section-title">${category}</div><div class="help-command-list">`;
+    cmds.forEach(cmd => {
+      html += `<div class="help-command-item">
+        <div class="help-command-text">💬 "${cmd.trigger}"</div>
+        <div class="help-command-desc">📌 ${cmd.desc}</div>
+        ${cmd.example ? `<div class="help-command-desc" style="color:var(--p); margin-top:4px;">✨ Ejemplo: "${cmd.example}"</div>` : ''}
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+  
+  if (macros.length === 0) {
+    html += `<div class="help-section"><div class="help-section-title">🎯 Macros Personalizadas</div><div class="help-command-list"><div class="help-command-item"><div class="help-command-text">💬 Sin macros configuradas</div><div class="help-command-desc">📌 Crea macros en el menú 🎯 para añadir comandos personalizados</div></div></div></div>`;
+  }
+  
+  document.getElementById('dynamicHelpContent').innerHTML = html;
+}
+
+function openHelpModal() {
+  generateDynamicHelp();
+  openModal('helpModal');
+}
+
+// ========== FUNCIONES DE CONFIGURACIÓN TIPOGRÁFICA ==========
+function applyFontSettings() {
+  document.documentElement.style.setProperty('--font-family-base', cfg.fontFamily);
+  document.documentElement.style.setProperty('--font-size-base', cfg.fontSizeBase + 'px');
+  document.documentElement.style.setProperty('--font-size-heading', (cfg.fontSizeBase * 1.2) + 'px');
+  document.documentElement.style.setProperty('--font-size-body', (cfg.fontSizeBase * 0.9) + 'px');
+  document.documentElement.style.setProperty('--font-size-small', (cfg.fontSizeBase * 0.75) + 'px');
+}
+
+// ========== FUNCIONES DE LECTURA DE PÁGINAS WEB ==========
+function simulatePageRead(readType) {
+  const pageContent = document.body.innerText;
+  if (readType === 'headings') {
+    const h1s = Array.from(document.querySelectorAll('h1')).map(h => h.innerText);
+    const h2s = Array.from(document.querySelectorAll('h2')).map(h => h.innerText);
+    let msg = '';
+    if (h1s.length) msg += `Encabezado principal: ${h1s.join(', ')}. `;
+    if (h2s.length) msg += `Títulos: ${h2s.join(', ')}. `;
+    if (!msg) msg = 'No hay encabezados destacados en esta página.';
+    speak(msg);
+    addMsg('jarvis', `📖 ${msg}`);
+  } else {
+    const text = pageContent.substring(0, 2000);
+    speak(text);
+    addMsg('jarvis', `📖 ${text.substring(0, 500)}...`);
+  }
+}
+
+// ========== FUNCIONES DEL CALENDARIO ==========
+function loadCalendarEvents() {
+  try { const saved = localStorage.getItem('jarvis_calendar_events'); if (saved) calendarEvents = JSON.parse(saved); } catch(e) { calendarEvents = []; }
+}
+function saveCalendarEvents() { localStorage.setItem('jarvis_calendar_events', JSON.stringify(calendarEvents)); }
+function getEventsForDate(date) { const dateStr = date.toISOString().split('T')[0]; return calendarEvents.filter(e => e.date === dateStr); }
+function addCalendarEvent() {
+  const title = document.getElementById('eventTitle').value.trim();
+  if (!title) { speak('Por favor, escriba un título para el evento.'); return; }
+  if (!selectedCalendarDate) { speak('Primero seleccione una fecha en el calendario.'); return; }
+  const dateStr = selectedCalendarDate.toISOString().split('T')[0];
+  const newEvent = { id: Date.now().toString(), title: title, description: document.getElementById('eventDesc').value.trim(), priority: document.getElementById('eventPriority').value, time: document.getElementById('eventTime').value || null, date: dateStr, createdAt: new Date().toISOString() };
+  calendarEvents.push(newEvent);
+  saveCalendarEvents();
+  renderCalendar();
+  renderEventsForDate(selectedCalendarDate);
+  document.getElementById('eventTitle').value = ''; document.getElementById('eventDesc').value = ''; document.getElementById('eventTime').value = ''; document.getElementById('addEventForm').style.display = 'none';
+  speak(`Evento "${title}" agregado para el ${dateStr}.`);
+}
+function deleteCalendarEvent(eventId) {
+  if (confirm('¿Eliminar este evento?')) {
+    const event = calendarEvents.find(e => e.id == eventId);
+    calendarEvents = calendarEvents.filter(e => e.id != eventId);
+    saveCalendarEvents();
+    renderCalendar();
+    if (selectedCalendarDate) renderEventsForDate(selectedCalendarDate);
+    if (event) speak(`Evento "${event.title}" eliminado.`);
+  }
+}
+function editCalendarEvent(eventId) {
+  const event = calendarEvents.find(e => e.id == eventId);
+  if (!event) return;
+  const newTitle = prompt('Editar título:', event.title);
+  if (newTitle && newTitle.trim()) event.title = newTitle.trim();
+  const newDesc = prompt('Editar descripción:', event.description || '');
+  if (newDesc !== null) event.description = newDesc;
+  const newPriority = confirm('¿Marcar como URGENTE?') ? 'urgente' : 'normal';
+  event.priority = newPriority;
+  saveCalendarEvents();
+  renderCalendar();
+  if (selectedCalendarDate) renderEventsForDate(selectedCalendarDate);
+  speak(`Evento "${event.title}" actualizado.`);
+}
+function renderCalendar() {
+  const year = currentCalendarDate.getFullYear();
+  const month = currentCalendarDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startDay = firstDay.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  document.getElementById('calendarMonthYear').textContent = `${monthNames[month]} ${year}`;
+  const daysContainer = document.getElementById('calendarDays');
+  daysContainer.innerHTML = '';
+  for (let i = 0; i < startDay; i++) { const emptyDay = document.createElement('div'); emptyDay.className = 'calendar-day'; emptyDay.style.opacity = '0.3'; emptyDay.style.minHeight = '100px'; daysContainer.appendChild(emptyDay); }
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const dateStr = date.toISOString().split('T')[0];
+    const events = getEventsForDate(date);
+    const hasEvents = events.length > 0;
+    const isToday = dateStr === todayStr;
+    const dayDiv = document.createElement('div');
+    dayDiv.className = `calendar-day ${hasEvents ? 'has-events' : ''} ${isToday ? 'today' : ''}`;
+    let eventsHtml = '';
+    if (hasEvents) {
+      eventsHtml = '<div class="day-events">';
+      events.slice(0, 3).forEach(event => { const priorityClass = event.priority === 'urgente' ? 'urgente' : 'normal'; eventsHtml += `<div class="day-event-item ${priorityClass}" title="${escapeHtml(event.title)} - ${event.description || 'Sin descripción'}">📌 ${escapeHtml(event.title.substring(0, 20))}${event.title.length > 20 ? '...' : ''}</div>`; });
+      if (events.length > 3) eventsHtml += `<div class="day-event-item" style="color:var(--dim);">+${events.length - 3} más...</div>`;
+      eventsHtml += '</div>';
+    }
+    dayDiv.innerHTML = `<div class="day-number"><span>${d}</span>${hasEvents ? '<span class="event-dot"></span>' : ''}</div>${eventsHtml}`;
+    dayDiv.onclick = (function(selectedDate) { return function() { selectDate(selectedDate); }; })(new Date(year, month, d));
+    daysContainer.appendChild(dayDiv);
+  }
+}
+function selectDate(date) { selectedCalendarDate = date; renderEventsForDate(date); document.getElementById('addEventForm').style.display = 'block'; document.getElementById('eventTitle').focus(); }
+function renderEventsForDate(date) {
+  const dateStr = date.toISOString().split('T')[0];
+  const events = getEventsForDate(date);
+  const container = document.getElementById('calendarEventsList');
+  const formattedDate = date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  if (events.length === 0) { container.innerHTML = `<div class="calendar-events-list-title">📅 ${formattedDate}</div><div style="text-align:center; padding:20px; color:var(--dim);">No hay eventos para esta fecha.</div>`; return; }
+  const priorityText = { normal: '🟢 NORMAL', urgent: '🔴 URGENTE', urgente: '🔴 URGENTE' };
+  container.innerHTML = `<div class="calendar-events-list-title">📅 ${formattedDate} - ${events.length} evento${events.length > 1 ? 's' : ''}</div>` + events.map(e => `<div class="event-item"><div class="event-info"><div class="event-title">${escapeHtml(e.title)}</div><div class="event-description">${e.description || 'Sin descripción'}</div><div class="event-meta"><span class="event-priority ${e.priority}">${priorityText[e.priority] || '🟢 NORMAL'}</span>${e.time ? `<span style="font-size:0.7rem;">🕐 ${e.time}</span>` : ''}</div></div><div class="event-actions"><button onclick="editCalendarEvent('${e.id}')">✏️ Editar</button><button onclick="deleteCalendarEvent('${e.id}')">🗑️ Eliminar</button></div></div>`).join('');
+}
+function changeMonth(delta) { currentCalendarDate.setMonth(currentCalendarDate.getMonth() + delta); renderCalendar(); if (selectedCalendarDate && selectedCalendarDate.getMonth() === currentCalendarDate.getMonth()) renderEventsForDate(selectedCalendarDate); else { document.getElementById('calendarEventsList').innerHTML = `<div style="text-align:center; padding:25px; color:var(--dim);">Seleccione una fecha para ver los eventos</div>`; document.getElementById('addEventForm').style.display = 'none'; } }
+function goToToday() { currentCalendarDate = new Date(); renderCalendar(); selectDate(new Date()); }
+function openCalendarModal() { currentCalendarDate = new Date(); selectedCalendarDate = new Date(); renderCalendar(); renderEventsForDate(new Date()); document.getElementById('addEventForm').style.display = 'block'; openModal('calendarModal'); }
+function cancelAddEvent() { document.getElementById('addEventForm').style.display = 'none'; document.getElementById('eventTitle').value = ''; document.getElementById('eventDesc').value = ''; document.getElementById('eventTime').value = ''; }
+
+// ========== AGENDAR POR VOZ ==========
+function parseAgendarCommand(text) {
+  const l = text.toLowerCase();
+  const matchNatural = l.match(/agendar\s+(.+?)\s+para\s+el\s+(\d+)\s+de\s+([a-záéíóúñ]+)/i);
+  if (matchNatural) {
+    const eventTitle = matchNatural[1].trim();
+    const day = parseInt(matchNatural[2]);
+    const monthName = matchNatural[3].toLowerCase();
+    const meses = { 'enero':0, 'febrero':1, 'marzo':2, 'abril':3, 'mayo':4, 'junio':5, 'julio':6, 'agosto':7, 'septiembre':8, 'octubre':9, 'noviembre':10, 'diciembre':11, 'ene':0, 'feb':1, 'mar':2, 'abr':3, 'may':4, 'jun':5, 'jul':6, 'ago':7, 'sep':8, 'oct':9, 'nov':10, 'dic':11 };
+    const month = meses[monthName];
+    if (month !== undefined && day >= 1 && day <= 31) {
+      const year = new Date().getFullYear();
+      let date = new Date(year, month, day);
+      if (date < new Date()) date = new Date(year + 1, month, day);
+      const newEvent = { id: Date.now().toString(), title: eventTitle, description: '', priority: 'normal', time: null, date: date.toISOString().split('T')[0], createdAt: new Date().toISOString() };
+      calendarEvents.push(newEvent);
+      saveCalendarEvents();
+      renderCalendar();
+      speak(`He agendado "${eventTitle}" para el ${date.toLocaleDateString('es-ES')}.`);
+      return true;
+    }
+  }
+  const matchDate = l.match(/agendar\s+(.+?)\s+para\s+(\d{4}-\d{2}-\d{2})/i);
+  if (matchDate) {
+    const eventTitle = matchDate[1].trim();
+    const dateStr = matchDate[2];
+    const newEvent = { id: Date.now().toString(), title: eventTitle, description: '', priority: 'normal', time: null, date: dateStr, createdAt: new Date().toISOString() };
+    calendarEvents.push(newEvent);
+    saveCalendarEvents();
+    renderCalendar();
+    speak(`He agendado "${eventTitle}" para el ${dateStr}.`);
+    return true;
+  }
+  return false;
+}
+
+// ========== MANEJO DE PERMISO DE MICRÓFONO ==========
+let micPermissionRequested = false;
+function showMicPermissionDialog() {
+  const existingDialog = document.querySelector('.mic-permission-panel');
+  if (existingDialog) existingDialog.remove();
+  const dialog = document.createElement('div');
+  dialog.className = 'mic-permission-panel';
+  dialog.innerHTML = `<h3>🎤 Permiso de Micrófono</h3><p>J.A.R.V.I.S necesita acceso a su micrófono para escuchar sus comandos de voz.</p><p style="font-size:0.8rem; opacity:0.7;">Su privacidad es importante. El audio solo se procesa localmente.</p><button id="acceptMicBtn">✅ Permitir Micrófono</button><button id="denyMicBtn" class="btn-secondary">❌ No permitir</button>`;
+  document.body.appendChild(dialog);
+  document.getElementById('acceptMicBtn').onclick = async () => { dialog.remove(); await requestMicrophonePermission(); };
+  document.getElementById('denyMicBtn').onclick = () => { dialog.remove(); addMsg('jarvis', '⚠️ No se concedió permiso de micrófono.'); document.getElementById('startOverlay').classList.remove('hide'); };
+}
+async function requestMicrophonePermission() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(track => track.stop());
+    localStorage.setItem('jarvis_mic_permission', 'granted');
+    micPermissionRequested = true;
+    await startJarvisSystem();
+  } catch (error) { console.error(error); addMsg('jarvis', '❌ No se pudo acceder al micrófono.'); document.getElementById('startOverlay').classList.remove('hide'); }
+}
+async function startJarvisSystem() {
+  const ok = await initAudio();
+  if (!ok) { addMsg('jarvis', '❌ Error al inicializar el micrófono.'); document.getElementById('startOverlay').classList.remove('hide'); return; }
+  sessionActive = true;
+  startRecognition();
+  document.getElementById('voiceLabel').textContent = 'ACTIVO';
+  document.getElementById('micStatusLabel').textContent = '🎤 SIEMPRE ACTIVO';
+  document.getElementById('micStatusText').style.display = 'flex';
+  checkGroq();
+  setInterval(() => { resetDailyAlerts(); checkWorkReminders(); checkAutoReminders(); }, 30000);
+  setTimeout(greet, 600);
+}
+
+// ========== AUDIO ==========
+async function initAudio() {
+  try {
+    if (mediaStream && mediaStreamActive) mediaStream.getTracks().forEach(track => track.stop());
+    if (audioCtx && audioCtx.state !== 'closed') await audioCtx.close();
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaStreamActive = true;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(mediaStream);
+    gainNode = audioCtx.createGain();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(gainNode);
+    gainNode.connect(analyser);
+    gainNode.gain.value = 1.0;
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    isMicReady = true;
+    startVolumeMeter();
+    return true;
+  } catch(e) { console.error('Mic error:', e); isMicReady = false; return false; }
+}
+function startVolumeMeter() {
+  if (volAnimId) cancelAnimationFrame(volAnimId);
+  const bars = [0,1,2,3,4,5,6].map(i => document.getElementById('vb'+i));
+  const dataArray = new Uint8Array(analyser.frequencyBinCount);
+  function loop() { volAnimId = requestAnimationFrame(loop); if (analyser && dataArray) { analyser.getByteFrequencyData(dataArray); bars.forEach((bar, i) => { if (bar) bar.style.height = Math.min(28, (dataArray[i * 4] || 0) / 255 * 30) + 'px'; }); } }
+  loop();
+}
+function duckMic() { if (gainNode && audioCtx && audioCtx.state !== 'closed') gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.1); }
+function unduckMic() { if (gainNode && audioCtx && audioCtx.state !== 'closed') gainNode.gain.linearRampToValueAtTime(1.0, audioCtx.currentTime + 0.1); }
+
+// ========== RECONOCIMIENTO DE VOZ ==========
+function startRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) { addMsg('jarvis', '⚠️ Tu navegador no soporta reconocimiento de voz.'); return; }
+  if (recognition) try { recognition.stop(); } catch(e) {}
+  recognition = new SpeechRecognition();
+  recognition.lang = cfg.lang;
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.onstart = () => { document.getElementById('micDot').className = 'dot green'; document.getElementById('micDot2').className = 'dot green'; document.getElementById('voiceLabel').textContent = 'ESCUCHANDO'; };
+  recognition.onend = () => { document.getElementById('micDot').className = 'dot yellow'; document.getElementById('micDot2').className = 'dot yellow'; if (sessionActive && isMicReady) setTimeout(() => { if (sessionActive) try { recognition.start(); } catch(e) {} }, 500); else if (!sessionActive) document.getElementById('voiceLabel').textContent = 'STANDBY'; };
+  recognition.onerror = (e) => { if (e.error === 'no-speech') return; if (sessionActive && isMicReady) setTimeout(() => { try { recognition.start(); } catch(e) {} }, 1000); };
+  recognition.onresult = (e) => { if (isSpeaking) return; let transcript = ''; for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { transcript = e.results[i][0].transcript; break; } if (transcript.trim()) processCommand(transcript.trim()); };
+  try { recognition.start(); } catch(e) { console.warn(e); }
+}
+
+// ========== SÍNTESIS DE VOZ ==========
+function speak(text) {
+  if (!text) return;
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  duckMic();
+  isSpeaking = true;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = cfg.lang;
+  utterance.rate = cfg.speed;
+  utterance.pitch = cfg.pitch;
+  const voice = getVoice();
+  if (voice) utterance.voice = voice;
+  utterance.onend = () => { isSpeaking = false; unduckMic(); };
+  utterance.onerror = () => { isSpeaking = false; unduckMic(); };
+  window.speechSynthesis.speak(utterance);
+  addMsg('jarvis', text);
+}
+function stopSpeaking() { if (window.speechSynthesis) window.speechSynthesis.cancel(); isSpeaking = false; unduckMic(); }
+function getVoice() { const voices = window.speechSynthesis.getVoices(); return voices.find(v => v.lang.startsWith('es')) || null; }
+function loadVoices() {
+  const voices = window.speechSynthesis.getVoices();
+  availableVoices = voices.filter(v => v.lang.startsWith('es') || v.lang.startsWith('en'));
+  const sel = document.getElementById('cfgVoice');
+  sel.innerHTML = '<option value="">— Auto —</option>';
+  availableVoices.forEach(v => { const opt = document.createElement('option'); opt.value = v.name; opt.textContent = `${v.name} (${v.lang})`; if (v.name === cfg.voiceName) opt.selected = true; sel.appendChild(opt); });
+}
+if (window.speechSynthesis) { window.speechSynthesis.onvoiceschanged = loadVoices; loadVoices(); }
+
+// ========== GROQ API ==========
+async function checkGroq() {
+  const el = document.getElementById('apiStatus');
+  el.className = ''; el.textContent = '⏳ Conectando con Groq IA...';
+  if (!cfg.groqKey || cfg.groqKey.length < 20) { el.className = 'error'; el.textContent = '❌ API Key no configurada'; apiAvailable = false; return; }
+  for (const model of GROQ_MODELS) {
+    try {
+      const response = await fetch(GROQ_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.groqKey}` }, body: JSON.stringify({ model: model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 5 }) });
+      if (response.ok) { activeModel = model; apiAvailable = true; el.className = 'online'; el.textContent = `✅ Groq IA activa (${model})`; return; }
+    } catch(e) { console.warn('Error con modelo:', model, e); }
+  }
+  apiAvailable = false; el.className = 'offline'; el.textContent = '⚠️ Modo offline - Groq no disponible';
+}
+async function askGroq(text, userName) {
+  if (!apiAvailable || !activeModel || !cfg.groqKey) return null;
+  const systemPrompt = `Eres JARVIS, el asistente de IA de Tony Stark. Hablas español de forma concisa y técnica. El usuario se llama "${userName}". Responde en máximo 2 oraciones cortas. Sin asteriscos ni markdown. No menciones la hora a menos que te la pregunten específicamente.`;
+  try {
+    const response = await fetch(GROQ_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.groqKey}` }, body: JSON.stringify({ model: activeModel, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }], max_tokens: 150, temperature: 0.7 }) });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content?.replace(/\*/g, '').trim() || null;
+  } catch(e) { console.error('Groq error:', e); return null; }
+}
+
+// ========== CONTROL LABORAL ==========
+function loadWorkConfig() {
+  try { const saved = localStorage.getItem('jarvis_work_config'); if (saved) { const parsed = JSON.parse(saved); workConfig = { ...workConfig, ...parsed }; } } catch(e) {}
+  document.getElementById('workIngreso').value = workConfig.ingreso;
+  document.getElementById('workComida').value = workConfig.comida;
+  document.getElementById('workEspeciales').value = workConfig.especiales;
+  document.getElementById('workSalida').value = workConfig.salida;
+  document.getElementById('msgIngreso').value = workConfig.mensajes.ingreso;
+  document.getElementById('msgComida').value = workConfig.mensajes.comida;
+  document.getElementById('msgEspeciales').value = workConfig.mensajes.especiales;
+  document.getElementById('msgSalida').value = workConfig.mensajes.salida;
+  document.querySelectorAll('.workday-check').forEach(cb => { cb.checked = workConfig.workDays.includes(parseInt(cb.value)); });
+  renderResponsesLog();
+}
+function saveWorkConfig() {
+  workConfig.ingreso = document.getElementById('workIngreso').value;
+  workConfig.comida = document.getElementById('workComida').value;
+  workConfig.especiales = document.getElementById('workEspeciales').value;
+  workConfig.salida = document.getElementById('workSalida').value;
+  workConfig.mensajes = { ingreso: document.getElementById('msgIngreso').value, comida: document.getElementById('msgComida').value, especiales: document.getElementById('msgEspeciales').value, salida: document.getElementById('msgSalida').value };
+  workConfig.workDays = [];
+  document.querySelectorAll('.workday-check:checked').forEach(cb => { workConfig.workDays.push(parseInt(cb.value)); });
+  localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
+  speak('Configuración laboral guardada correctamente.');
+}
+function addWorkResponse(eventType, responseText) {
+  const now = new Date();
+  workConfig.responses.unshift({ id: Date.now(), type: eventType, response: responseText, timestamp: now.toISOString(), time: now.toLocaleTimeString('es-ES') });
+  if (workConfig.responses.length > 50) workConfig.responses.pop();
+  localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
+  renderResponsesLog();
+}
+function renderResponsesLog() {
+  const container = document.getElementById('responsesList');
+  if (!container) return;
+  if (workConfig.responses.length === 0) { container.innerHTML = '<div style="text-align:center;padding:10px;">Sin respuestas registradas</div>'; return; }
+  const icons = { ingreso: '🚪', comida: '🍽️', especiales: '⚙️', salida: '🚪' };
+  container.innerHTML = workConfig.responses.slice(0, 15).map(r => `<div class="response-item"><span class="response-time">${r.time}</span><span>${icons[r.type] || '📌'}:</span><span class="response-text">${escapeHtml(r.response.substring(0, 40))}</span></div>`).join('');
+}
+function checkWorkReminders() {
+  if (!sessionActive) return;
+  const now = new Date();
+  const currentTime = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  const currentDay = now.getDay();
+  const isWorkDay = workConfig.workDays.includes(currentDay);
+  if (!isWorkDay) return;
+  const events = [
+    { type: 'ingreso', time: workConfig.ingreso, statusId: 'ingresoStatus', msg: workConfig.mensajes.ingreso, title: 'INGRESO LABORAL' },
+    { type: 'comida', time: workConfig.comida, statusId: 'comidaStatus', msg: workConfig.mensajes.comida, title: 'HORA DE COMIDA' },
+    { type: 'especiales', time: workConfig.especiales, statusId: 'especialesStatus', msg: workConfig.mensajes.especiales, title: 'TRABAJOS ESPECIALES' },
+    { type: 'salida', time: workConfig.salida, statusId: 'salidaStatus', msg: workConfig.mensajes.salida, title: 'HORA DE SALIDA' }
+  ];
+  events.forEach(event => {
+    if (currentTime === event.time && !workConfig.alerts[event.type]) {
+      workConfig.alerts[event.type] = true;
+      localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
+      const statusDiv = document.getElementById(event.statusId);
+      if (statusDiv) { statusDiv.className = 'work-hour-status alert'; statusDiv.innerHTML = '🔔 RECORDATORIO ENVIADO'; }
+      const alertMsg = `🔔 ${event.title}: ${event.msg}`;
+      speak(alertMsg);
+      addMsg('jarvis', alertMsg);
+      const toast = document.createElement('div');
+      toast.className = 'notification-toast';
+      toast.style.borderColor = 'var(--p)';
+      toast.innerHTML = `<span>⏰</span><div><strong>${event.title}</strong><div style="font-size:0.7rem;">${event.msg.substring(0, 100)}${event.msg.length > 100 ? '...' : ''}</div></div><button onclick="this.parentElement.remove()">OK</button>`;
+      document.body.appendChild(toast);
+      setTimeout(() => { if (toast.parentElement) toast.remove(); }, 15000);
+      window.pendingWorkResponse = event.type;
+    }
+  });
+}
+function processWorkResponse(eventType, responseText) {
+  addWorkResponse(eventType, responseText);
+  const statusMap = { ingreso: 'ingresoStatus', comida: 'comidaStatus', especiales: 'especialesStatus', salida: 'salidaStatus' };
+  const statusDiv = document.getElementById(statusMap[eventType]);
+  if (statusDiv) { statusDiv.className = 'work-hour-status completed'; statusDiv.innerHTML = `✅ ${responseText.substring(0, 30)}`; }
+  workConfig.alerts[eventType] = false;
+  localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
+  speak(`Registrado: ${responseText}`);
+  addMsg('jarvis', `✅ Respuesta registrada: ${responseText}`);
+  window.pendingWorkResponse = null;
+}
+function resetDailyAlerts() {
+  const today = new Date().toDateString();
+  if (window.lastResetDate !== today) {
+    workConfig.alerts = { ingreso: false, comida: false, especiales: false, salida: false };
+    localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
+    const statuses = ['ingresoStatus', 'comidaStatus', 'especialesStatus', 'salidaStatus'];
+    statuses.forEach(id => { const div = document.getElementById(id); if (div) { div.className = 'work-hour-status pending'; div.innerHTML = '⏳ Esperando'; } });
+    window.lastResetDate = today;
+  }
+}
+
+// ========== TAREAS ==========
+function loadTasks() { try { const saved = localStorage.getItem('jarvis_tasks'); if (saved) tasks = JSON.parse(saved); } catch(e) { tasks = []; } }
+function saveTasks() { localStorage.setItem('jarvis_tasks', JSON.stringify(tasks)); }
+function renderTasks() {
+  const container = document.getElementById('taskList');
+  if (!container) return;
+  let filtered = tasks.filter(t => t.completed === (tasksFilter === 'completed'));
+  if (filtered.length === 0) { container.innerHTML = `<div style="text-align:center;padding:20px;">${tasksFilter === 'pending' ? '📭 No hay tareas pendientes' : '✅ No hay tareas completadas'}</div>`; return; }
+  container.innerHTML = filtered.map(task => `<div class="task-item ${task.completed ? 'completed' : ''}"><div class="task-item-header"><input type="checkbox" class="task-check" ${task.completed ? 'checked' : ''} onchange="toggleTask('${task.id}')"><div class="task-title">${escapeHtml(task.title)}</div><span class="task-priority ${task.priority}">${task.priority === 'urgente' ? '🔴 URGENTE' : '🟢 NORMAL'}</span></div>${task.description ? `<div class="task-description">${escapeHtml(task.description)}</div>` : ''}<div class="task-datetime">📅 ${task.date || 'Sin fecha'} ${task.time || ''}</div><div class="task-actions"><button onclick="editTask('${task.id}')">✏️</button><button onclick="deleteTask('${task.id}')">🗑️</button></div></div>`).join('');
+}
+function addTask() {
+  const title = document.getElementById('taskTitle').value.trim();
+  if (!title) { speak('Escriba un título.'); return; }
+  tasks.unshift({ id: Date.now().toString(), title: title, description: document.getElementById('taskDesc').value.trim(), priority: document.getElementById('taskPriority').value, date: document.getElementById('taskDate').value || null, time: document.getElementById('taskTime').value || null, completed: false, completedAt: null, reminderSent: false });
+  saveTasks(); renderTasks();
+  document.getElementById('taskTitle').value = ''; document.getElementById('taskDesc').value = ''; document.getElementById('taskDate').value = ''; document.getElementById('taskTime').value = '';
+  speak(`Tarea "${title}" agregada.`);
+}
+function toggleTask(id) { const task = tasks.find(t => t.id == id); if (task) { task.completed = !task.completed; task.completedAt = task.completed ? new Date().toISOString() : null; saveTasks(); renderTasks(); speak(task.completed ? `Tarea "${task.title}" completada.` : `Tarea "${task.title}" reactivada.`); } }
+function editTask(id) { const task = tasks.find(t => t.id == id); if (!task) return; const newTitle = prompt('Editar título:', task.title); if (newTitle && newTitle.trim()) task.title = newTitle.trim(); saveTasks(); renderTasks(); speak(`Tarea "${task.title}" actualizada.`); }
+function deleteTask(id) { if (!confirm('¿Eliminar esta tarea?')) return; const task = tasks.find(t => t.id == id); tasks = tasks.filter(t => t.id != id); saveTasks(); renderTasks(); if (task) speak(`Tarea "${task.title}" eliminada.`); }
+function clearCompletedTasks() { const completed = tasks.filter(t => t.completed); if (completed.length === 0) { speak('No hay tareas completadas.'); return; } tasks = tasks.filter(t => !t.completed); saveTasks(); renderTasks(); speak(`${completed.length} tareas eliminadas.`); }
+function setTasksFilter(filter) { tasksFilter = filter; document.querySelectorAll('.task-tab').forEach(tab => { tab.classList.toggle('active', tab.dataset.tab === filter); }); renderTasks(); }
+function checkAndAnnounceReminders() {
+  if (!sessionActive) { speak('El sistema no está activo.'); return; }
+  const pending = tasks.filter(t => !t.completed && t.date && t.time);
+  if (pending.length === 0) { speak('No tiene recordatorios pendientes.'); return; }
+  let msg = `Tiene ${pending.length} recordatorio${pending.length > 1 ? 's' : ''} pendiente${pending.length > 1 ? 's' : ''}: ` + pending.map(t => `${t.title} (${t.priority === 'urgente' ? 'URGENTE' : 'NORMAL'}) para el ${t.date} a las ${t.time}`).join(', ');
+  speak(msg); addMsg('jarvis', `🔔 ${msg}`);
+}
+function checkAutoReminders() {
+  if (!sessionActive) return;
+  const now = Date.now();
+  tasks.forEach(task => {
+    if (!task.completed && task.date && task.time && !task.reminderSent) {
+      const [y,m,d] = task.date.split('-'); const [h,min] = task.time.split(':');
+      const taskTime = new Date(y,m-1,d,h,min,0).getTime();
+      if (taskTime <= now && taskTime > now - 60000) {
+        task.reminderSent = true; saveTasks();
+        speak(`🔔 Recordatorio: ${task.title}${task.description ? ' - ' + task.description : ''}`);
+        addMsg('jarvis', `🔔 ${task.title}`);
+      }
+    }
+  });
+}
+
+// ========== FUNCIONES GENERALES ==========
+function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, m => m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'); }
+function loadState() {
+  try { const s = JSON.parse(localStorage.getItem('jarvis_cfg')||'{}'); cfg = {...DEFAULT_CONFIG,...s}; } catch(e) {}
+  try { const m = JSON.parse(localStorage.getItem('jarvis_macros')); if(Array.isArray(m)) macros=m; } catch(e) {}
+  try { users = JSON.parse(localStorage.getItem('jarvis_users')||'{}'); } catch(e) {}
+  currentUser = localStorage.getItem('jarvis_current_user')||null;
+  if(!cfg.musicUrl) cfg.musicUrl = DEFAULT_CONFIG.musicUrl;
+  if(!cfg.weatherUrl) cfg.weatherUrl = DEFAULT_CONFIG.weatherUrl;
+  if(!cfg.fontFamily) cfg.fontFamily = DEFAULT_CONFIG.fontFamily;
+  if(!cfg.fontSizeBase) cfg.fontSizeBase = DEFAULT_CONFIG.fontSizeBase;
+  applyFontSettings();
+}
+function saveState() { localStorage.setItem('jarvis_cfg',JSON.stringify(cfg)); localStorage.setItem('jarvis_macros',JSON.stringify(macros)); localStorage.setItem('jarvis_users',JSON.stringify(users)); }
+function setTheme(t) { document.documentElement.setAttribute('data-theme',t); document.querySelectorAll('.theme-dot').forEach(d=>d.classList.toggle('active',d.dataset.t===t)); cfg.theme=t; saveState(); }
+function accionMusica() { window.open(cfg.musicUrl || DEFAULT_CONFIG.musicUrl, '_blank'); speak('Reproduciendo música.'); }
+function accionClima() { window.open(cfg.weatherUrl || DEFAULT_CONFIG.weatherUrl, '_blank'); speak('Abriendo el clima.'); }
+function accionHora() { speak(`Son las ${new Date().toLocaleTimeString('es-ES')}.`); }
+function registerUser(name) { const id=name.toLowerCase(); if(!users[id]) users[id]={name,firstSeen:new Date().toISOString(),conv:0}; users[id].conv++; currentUser=id; localStorage.setItem('jarvis_current_user',id); saveState(); updateUserBadge(); return users[id]; }
+function forgetUser() { if(currentUser){ delete users[currentUser]; currentUser=null; localStorage.removeItem('jarvis_current_user'); saveState(); updateUserBadge(); speak('Usuario olvidado.'); } }
+function updateUserBadge() { const badge = document.getElementById('userBadge'); if (currentUser && users[currentUser]) badge.innerHTML = `👤 ${users[currentUser].name.toUpperCase()}`; else badge.innerHTML = '👤 SIN IDENTIFICAR'; }
+function parseBuiltIn(text) { 
+  const l = text.toLowerCase(); 
+  if (l.includes('leer página') || l.includes('leer esta página')) { simulatePageRead('full'); return null; }
+  if (l.includes('leer encabezados') || l.includes('qué dice la página')) { simulatePageRead('headings'); return null; }
+  if(l.includes('abrir calendario')){ openCalendarModal(); return 'Abriendo calendario.'; }
+  if(l.includes('abrir youtube')){ window.open('https://www.youtube.com','_blank'); return 'Abriendo YouTube.'; }
+  if(l.match(/buscar\s+(.+)/i) && !l.includes('youtube')){ const q=l.match(/buscar\s+(.+)/i)[1]; window.open(`https://www.google.com/search?q=${encodeURIComponent(q)}`,'_blank'); return `Buscando "${q}" en Google.`; }
+  if(l.match(/buscar en youtube\s+(.+)/i) || l.match(/reproduce\s+(.+)/i) || l.match(/pon\s+(.+)/i)){
+    let q = ''; 
+    if(l.match(/buscar en youtube\s+(.+)/i)) q = l.match(/buscar en youtube\s+(.+)/i)[1];
+    else if(l.match(/reproduce\s+(.+)/i)) q = l.match(/reproduce\s+(.+)/i)[1];
+    else if(l.match(/pon\s+(.+)/i)) q = l.match(/pon\s+(.+)/i)[1];
+    if(q && !q.match(/^(youtube|abrir|abre)$/i)){ window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`,'_blank'); return `Buscando y reproduciendo "${q}" en YouTube.`; }
+  }
+  if(l.includes('qué hora es')) return `Son las ${new Date().toLocaleTimeString('es-ES')}.`;
+  if(l.includes('qué fecha es')) return `Hoy es ${new Date().toLocaleDateString('es-ES')}.`;
+  if(l.includes('recordatorio')) { checkAndAnnounceReminders(); return null; }
+  if(l.includes('ayuda')) { openHelpModal(); return 'Abriendo ayuda.'; }
+  return null;
+}
+function matchMacro(text) { const lower=text.toLowerCase(); for(const m of macros){ const triggers=m.trigger.split(',').map(t=>t.trim().toLowerCase()); if(triggers.some(t=>lower.includes(t))) return m; } return null; }
+function executeMacro(m,text){ let spoken=m.speak; if(spoken==='_TIME_') spoken=`Son las ${new Date().toLocaleTimeString('es-ES')}.`; if(m.type==='url') window.open(m.action,'_blank'); if(m.type==='search') window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(m.action||text)}`,'_blank'); if(spoken) speak(spoken); return true; }
+function openModal(id){ document.getElementById(id).classList.add('show'); if(id==='settingsModal') populateSettings(); if(id==='macrosModal') renderMacroList(); if(id==='backupModal') refreshExportPreview(); }
+function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+function populateSettings(){ 
+  document.getElementById('cfgGroqKey').value=cfg.groqKey||''; document.getElementById('cfgSpeed').value=cfg.speed; document.getElementById('cfgPitch').value=cfg.pitch; 
+  document.getElementById('speedVal').textContent=cfg.speed; document.getElementById('pitchVal').textContent=cfg.pitch; document.getElementById('cfgLang').value=cfg.lang; 
+  document.getElementById('cfgMusicUrl').value=cfg.musicUrl || DEFAULT_CONFIG.musicUrl; document.getElementById('cfgWeatherUrl').value=cfg.weatherUrl || DEFAULT_CONFIG.weatherUrl;
+  document.getElementById('cfgFontFamily').value=cfg.fontFamily; document.getElementById('cfgFontSizeBase').value=cfg.fontSizeBase; document.getElementById('fontSizeBaseVal').textContent=cfg.fontSizeBase+'px';
+  loadVoices(); 
+}
+function saveSettings(){ 
+  cfg.groqKey=document.getElementById('cfgGroqKey').value.trim()||cfg.groqKey; cfg.speed=parseFloat(document.getElementById('cfgSpeed').value); cfg.pitch=parseFloat(document.getElementById('cfgPitch').value); 
+  cfg.lang=document.getElementById('cfgLang').value; cfg.musicUrl=document.getElementById('cfgMusicUrl').value.trim() || DEFAULT_CONFIG.musicUrl; cfg.weatherUrl=document.getElementById('cfgWeatherUrl').value.trim() || DEFAULT_CONFIG.weatherUrl;
+  cfg.fontFamily=document.getElementById('cfgFontFamily').value; cfg.fontSizeBase=parseInt(document.getElementById('cfgFontSizeBase').value);
+  const vn=document.getElementById('cfgVoice').value; if(vn){ cfg.voiceName=vn; selectedVoice=availableVoices.find(v=>v.name===vn)||null; } 
+  if(recognition) recognition.lang=cfg.lang; saveState(); applyFontSettings(); closeModal('settingsModal'); checkGroq(); speak('Configuración guardada.'); 
+}
+function renderMacroList(){ const list=document.getElementById('macroList'); list.innerHTML=macros.length===0?'<p style="text-align:center;padding:20px;">Sin macros</p>':''; macros.forEach(m=>{ const div=document.createElement('div'); div.className='macro-item'; div.innerHTML=`<div><div class="macro-trigger">📢 ${m.trigger.split(',')[0]}</div><div class="macro-action">${m.name}</div></div><span class="macro-type ${m.type}">${m.type.toUpperCase()}</span><div><button onclick="openMacroEditor('${m.id}')">✏️</button><button onclick="deleteMacro('${m.id}')">🗑️</button></div>`; list.appendChild(div); }); }
+function openMacroEditor(id){ const m=id?macros.find(x=>x.id===id):null; document.getElementById('macroEditorTitle').textContent=m?'✏️ EDITAR':'➕ NUEVO'; document.getElementById('macroEditId').value=m?m.id:''; document.getElementById('macroTrigger').value=m?m.trigger:''; document.getElementById('macroName').value=m?m.name:''; document.getElementById('macroType').value=m?m.type:'url'; document.getElementById('macroAction').value=m?m.action:''; document.getElementById('macroSpeak').value=m?m.speak:''; updateMacroActionLabel(); closeModal('macrosModal'); openModal('macroEditorModal'); }
+function updateMacroActionLabel(){ const labels={url:'URL',search:'TÉRMINO DE BÚSQUEDA',speak:'TEXTO'}; const t=document.getElementById('macroType').value; document.getElementById('macroActionLabel').textContent=labels[t]||'ACCIÓN'; }
+function saveMacro(){ const id=document.getElementById('macroEditId').value; const m={id:id||'m'+Date.now(),name:document.getElementById('macroName').value.trim()||'Sin nombre',trigger:document.getElementById('macroTrigger').value.trim(),type:document.getElementById('macroType').value,action:document.getElementById('macroAction').value.trim(),speak:document.getElementById('macroSpeak').value.trim()}; if(!m.trigger){ alert('Trigger requerido'); return; } if(id){ const idx=macros.findIndex(x=>x.id===id); if(idx>-1) macros[idx]=m; }else macros.push(m); saveState(); closeModal('macroEditorModal'); openModal('macrosModal'); }
+function deleteMacro(id){ if(confirm('¿Eliminar macro?')){ macros=macros.filter(m=>m.id!==id); saveState(); renderMacroList(); } }
+function getFullConfig(){ return{macros,settings:cfg,users,tasks,workConfig,knowledgeDB,calendarEvents,exportedAt:new Date().toISOString()}; }
+function refreshExportPreview(){ document.getElementById('exportPreview').value=JSON.stringify(getFullConfig(),null,2); }
+function exportConfig(){ const data=JSON.stringify(getFullConfig(),null,2); const blob=new Blob([data],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='jarvis-config.json'; a.click(); URL.revokeObjectURL(url); }
+function switchTab(tab){ document.getElementById('panelExport').style.display=tab==='export'?'':'none'; document.getElementById('panelImport').style.display=tab==='import'?'':'none'; document.getElementById('tabExport').className=tab==='export'?'tab active':'tab'; document.getElementById('tabImport').className=tab==='import'?'tab active':'tab'; if(tab==='export') refreshExportPreview(); }
+function loadImportFile(e){ const file=e.target.files[0]; if(!file) return; const r=new FileReader(); r.onload=ev=>{ document.getElementById('importJson').value=ev.target.result; }; r.readAsText(file); }
+function importConfig(){ try{ const d=JSON.parse(document.getElementById('importJson').value); if(d.macros) macros=d.macros; if(d.settings) cfg={...DEFAULT_CONFIG,...d.settings}; if(d.users) users=d.users; if(d.tasks) tasks=d.tasks; if(d.workConfig) workConfig={...workConfig,...d.workConfig}; if(d.knowledgeDB) knowledgeDB=d.knowledgeDB; if(d.calendarEvents) calendarEvents=d.calendarEvents; saveState(); saveTasks(); localStorage.setItem('jarvis_work_config',JSON.stringify(workConfig)); localStorage.setItem('jarvis_knowledge',JSON.stringify(knowledgeDB)); localStorage.setItem('jarvis_calendar_events',JSON.stringify(calendarEvents)); setTheme(cfg.theme); applyFontSettings(); closeModal('backupModal'); renderTasks(); renderResponsesLog(); checkGroq(); updateUserBadge(); speak('Configuración restaurada.'); }catch(e){ alert('JSON inválido'); } }
+function clearConversation(){ const conv=document.getElementById('conversation'); conv.querySelectorAll('.msg:not(#typingIndicator)').forEach(m=>m.remove()); addMsg('jarvis','Chat limpiado.'); }
+function addMsg(role,text){ const conv=document.getElementById('conversation'); const ti=document.getElementById('typingIndicator'); const div=document.createElement('div'); div.className=`msg ${role}`; const ts=new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}); div.innerHTML=`<div class="msg-avatar">${role==='jarvis'?'⚡':'👤'}</div><div class="msg-body"><div class="msg-label">${role==='jarvis'?'J.A.R.V.I.S':userName()} — ${ts}</div><div class="msg-text">${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div></div>`; conv.insertBefore(div,ti); div.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+function userName(){ return currentUser?(users[currentUser]?.name||'TÚ').toUpperCase():'TÚ'; }
+function greet(){ const part = new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches'); const name = currentUser ? users[currentUser].name : ''; speak(name ? `${part}, ${name}. Soy JARVIS. Sistema listo.` : `${part}. Soy JARVIS. Sistema listo.`); }
+
+async function processCommand(text) {
+  if (!text) return;
+  if (window.pendingWorkResponse) { processWorkResponse(window.pendingWorkResponse, text); window.pendingWorkResponse = null; return; }
+  if (parseAgendarCommand(text)) { return; }
+  const userName = currentUser ? users[currentUser].name : 'señor';
+  const nameMatch = text.match(/me llamo (\w+)|mi nombre es (\w+)|soy (\w+)/i);
+  if (nameMatch && !currentUser) { const name = (nameMatch[1]||nameMatch[2]||nameMatch[3]); registerUser(name); addMsg('user', text); speak(`Encantado, ${name}.`); return; }
+  const changeNameMatch = text.match(/cambia mi nombre a (\w+)|cámbiame el nombre a (\w+)/i);
+  if (changeNameMatch && sessionActive) { const newName = (changeNameMatch[1] || changeNameMatch[2]); if (newName) { if (currentUser) { const oldName = users[currentUser].name; const newId = newName.toLowerCase(); if (currentUser !== newId) { users[newId] = { ...users[currentUser], name: newName }; delete users[currentUser]; currentUser = newId; } else { users[currentUser].name = newName; } saveState(); updateUserBadge(); speak(`He cambiado su nombre de ${oldName} a ${newName}.`); } else { registerUser(newName); } return; } }
+  addMsg('user', text);
+  const macro = matchMacro(text); if (macro) { executeMacro(macro, text); return; }
+  const built = parseBuiltIn(text); if (built) { if(built !== null) speak(built); return; }
+  showTyping(true);
+  let resp = await askGroq(text, userName);
+  showTyping(false);
+  if (!resp) resp = `Entendido, ${userName}. No puedo procesar eso.`;
+  speak(resp);
+}
+function showTyping(show){ document.getElementById('typingIndicator').style.display=show?'flex':'none'; }
+
+// ========== INICIALIZACIÓN ==========
+loadState();
+loadWorkConfig();
+loadTasks();
+loadCalendarEvents();
+setTheme(cfg.theme||'arc-blue');
+updateUserBadge();
+applyFontSettings();
+
+document.getElementById('cfgFontSizeBase').oninput = function(){ document.getElementById('fontSizeBaseVal').textContent=this.value+'px'; };
+document.getElementById('cfgSpeed').oninput = function(){ document.getElementById('speedVal').textContent=this.value; };
+document.getElementById('cfgPitch').oninput = function(){ document.getElementById('pitchVal').textContent=this.value; };
+document.getElementById('addTaskBtn').onclick = addTask;
+document.getElementById('clearCompletedBtn').onclick = clearCompletedTasks;
+document.getElementById('checkRemindersBtn').onclick = () => { checkAndAnnounceReminders(); };
+document.getElementById('saveWorkHoursBtn').onclick = saveWorkConfig;
+document.querySelectorAll('.task-tab').forEach(tab => { tab.onclick = () => setTasksFilter(tab.dataset.tab); });
+
+document.getElementById('startBtn').onclick = async () => {
+  document.getElementById('startOverlay').classList.add('hide');
+  const hasPermission = localStorage.getItem('jarvis_mic_permission') === 'granted';
+  if (hasPermission) { await startJarvisSystem(); } else { showMicPermissionDialog(); }
+};
+
+renderTasks();
+setInterval(() => { document.getElementById('timeDisplay').textContent = new Date().toLocaleTimeString('es-ES'); resetDailyAlerts(); }, 1000);
+</script>
+</body>
+</html>
