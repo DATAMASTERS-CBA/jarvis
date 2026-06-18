@@ -961,6 +961,11 @@ body::after {
   background: var(--bg3);
   border-color: var(--p);
 }
+
+/* OCULTAR BOTÓN DE INICIO (no se usa) */
+#startBtn {
+  display: none !important;
+}
 </style>
 </head>
 <body>
@@ -1187,7 +1192,7 @@ const db = firebase.firestore();
 
 // ========== CONFIGURACIÓN LOCAL ==========
 const DEFAULT_CONFIG = { 
-  groqKey: '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', 
+  groqKey: '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', // NUEVA API KEY
   speed: 0.92, pitch: 0.90, voiceName: '', lang: 'es-ES', 
   bridgeUrl: 'ws://localhost:8765', theme: 'arc-blue',
   musicUrl: 'https://www.youtube.com/results?search_query=relaxing+music',
@@ -1243,6 +1248,11 @@ let activeModel = '';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-70b-8192'];
+
+// ========== DETECCIÓN DE DISPOSITIVO MÓVIL ==========
+function isMobile() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+}
 
 // ========== FUNCIONES DE SINCRONIZACIÓN CON FIREBASE ==========
 async function syncDataToFirebase() {
@@ -2067,6 +2077,34 @@ async function processCommand(text) {
 }
 function showTyping(show){ document.getElementById('typingIndicator').style.display=show?'flex':'none'; }
 
+// ========== INICIO AUTOMÁTICO Y DETECCIÓN MÓVIL ==========
+function iniciarSistema() {
+  const overlay = document.getElementById('startOverlay');
+  overlay.classList.add('hide');
+  const hasPermission = localStorage.getItem('jarvis_mic_permission') === 'granted';
+  if (hasPermission) {
+    startJarvisSystem();
+  } else {
+    showMicPermissionDialog();
+  }
+}
+
+function iniciarAutomatico() {
+  const overlay = document.getElementById('startOverlay');
+  const sub = document.querySelector('.overlay-sub:not([style*="font-size"])'); // el primer subtitle
+  
+  if (isMobile()) {
+    // En móviles: mostrar mensaje táctil y esperar toque
+    if (sub) sub.textContent = 'TOQUE LA PANTALLA PARA ACTIVAR J.A.R.V.I.S';
+    // Eliminar listener previo si existe
+    overlay.removeEventListener('touchstart', iniciarSistema);
+    overlay.addEventListener('touchstart', iniciarSistema);
+  } else {
+    // En PC: iniciar después de 1 segundo
+    setTimeout(iniciarSistema, 1000);
+  }
+}
+
 // ========== INICIALIZACIÓN ==========
 async function initApp() {
   loadState();
@@ -2089,6 +2127,9 @@ async function initApp() {
   setInterval(() => {
     syncDataToFirebase();
   }, 60000);
+  
+  // Inicio automático
+  iniciarAutomatico();
 }
 
 document.getElementById('cfgFontSizeBase').oninput = function(){ document.getElementById('fontSizeBaseVal').textContent=this.value+'px'; };
@@ -2100,11 +2141,8 @@ document.getElementById('checkRemindersBtn').onclick = () => { checkAndAnnounceR
 document.getElementById('saveWorkHoursBtn').onclick = saveWorkConfig;
 document.querySelectorAll('.task-tab').forEach(tab => { tab.onclick = () => setTasksFilter(tab.dataset.tab); });
 
-document.getElementById('startBtn').onclick = async () => {
-  document.getElementById('startOverlay').classList.add('hide');
-  const hasPermission = localStorage.getItem('jarvis_mic_permission') === 'granted';
-  if (hasPermission) { await startJarvisSystem(); } else { showMicPermissionDialog(); }
-};
+// El botón startBtn ya no se usa, pero por si acaso lo desactivamos
+document.getElementById('startBtn').style.display = 'none';
 
 // Iniciar la aplicación
 initApp();
