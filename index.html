@@ -1240,7 +1240,7 @@ let selectedVoice = null;
 let mediaStreamActive = false;
 let apiAvailable = false;
 let activeModel = '';
-let isProcessing = false; // Nuevo flag para evitar procesamiento concurrente
+let isProcessing = false;
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-70b-8192'];
@@ -1260,6 +1260,7 @@ async function syncDataToFirebase() {
       workConfig: workConfig,
       knowledgeDB: knowledgeDB,
       calendarEvents: calendarEvents,
+      currentUser: currentUser,    // 👈 Guardamos el usuario activo
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     await db.collection('users').doc('jarvis_data').set(data, { merge: true });
@@ -1280,19 +1281,34 @@ async function loadDataFromFirebase() {
     const doc = await db.collection('users').doc('jarvis_data').get();
     if (doc.exists) {
       const data = doc.data();
-      // Solo sobrescribimos si el campo existe y no es undefined
       if (data.macros) macros = data.macros;
       if (data.settings) cfg = { ...DEFAULT_CONFIG, ...data.settings };
       if (data.users) users = data.users;
-      // No sobrescribir con array vacío si ya tenemos tareas locales
       if (data.tasks && data.tasks.length > 0) tasks = data.tasks;
       if (data.workConfig) workConfig = { ...workConfig, ...data.workConfig };
       if (data.knowledgeDB) knowledgeDB = data.knowledgeDB;
       if (data.calendarEvents && data.calendarEvents.length > 0) calendarEvents = data.calendarEvents;
       
+      // 👇 Restaurar currentUser desde Firebase
+      if (data.currentUser && users[data.currentUser]) {
+        currentUser = data.currentUser;
+        localStorage.setItem('jarvis_current_user', currentUser);
+      } else {
+        // Si no hay usuario activo válido, buscar el primero registrado
+        const userKeys = Object.keys(users);
+        if (userKeys.length > 0) {
+          currentUser = userKeys[0];
+          localStorage.setItem('jarvis_current_user', currentUser);
+        } else {
+          currentUser = null;
+          localStorage.removeItem('jarvis_current_user');
+        }
+      }
+      
+      // Aplicar configuración y actualizar interfaz
       applyFontSettings();
       setTheme(cfg.theme);
-      updateUserBadge();
+      updateUserBadge();   // 👈 Actualiza la etiqueta con el nombre
       renderTasks();
       renderResponsesLog();
       renderCalendar();
@@ -1314,6 +1330,12 @@ async function loadDataFromFirebase() {
       console.log('ℹ️ No hay datos en Firebase, usando localStorage');
       document.getElementById('bridgeLabel').textContent = 'LOCAL';
       document.getElementById('bridgeDot').className = 'dot yellow';
+      // Si no hay datos en Firebase, intentar restaurar currentUser desde localStorage
+      const storedUser = localStorage.getItem('jarvis_current_user');
+      if (storedUser && users[storedUser]) {
+        currentUser = storedUser;
+        updateUserBadge();
+      }
       return false;
     }
   } catch (e) {
@@ -1392,24 +1414,30 @@ function analyzeFile(inputElement) {
   reader.readAsText(file, 'UTF-8');
 }
 
+// ========== EDICIÓN DE NOMBRE DE USUARIO (MEJORADA) ==========
 function editUserName() {
-  const newName = prompt('Ingrese su nombre:', currentUser ? users[currentUser]?.name : '');
+  let newName = prompt('Ingrese su nombre:', currentUser ? users[currentUser]?.name : '');
   if (newName && newName.trim()) {
+    const trimmed = newName.trim();
     if (currentUser) {
+      // Ya hay usuario: actualizar nombre
       const oldName = users[currentUser].name;
-      const newId = newName.trim().toLowerCase();
+      const newId = trimmed.toLowerCase();
       if (currentUser !== newId) {
-        users[newId] = { ...users[currentUser], name: newName.trim() };
+        // Cambiar ID si es diferente
+        users[newId] = { ...users[currentUser], name: trimmed };
         delete users[currentUser];
         currentUser = newId;
       } else {
-        users[currentUser].name = newName.trim();
+        users[currentUser].name = trimmed;
       }
       saveState();
       updateUserBadge();
-      speak(`He cambiado su nombre de ${oldName} a ${newName.trim()}.`);
+      speak(`He cambiado su nombre de ${oldName} a ${trimmed}.`);
     } else {
-      registerUser(newName.trim());
+      // No hay usuario: registrar uno nuevo
+      registerUser(trimmed);
+      speak(`Encantado, ${trimmed}.`);
     }
   }
 }
@@ -1524,7 +1552,7 @@ function loadCalendarEvents() {
 }
 function saveCalendarEvents() { 
   localStorage.setItem('jarvis_calendar_events', JSON.stringify(calendarEvents));
-  syncDataToFirebase(); // Sincronizar con la nube
+  syncDataToFirebase();
 }
 function getEventsForDate(date) { const dateStr = date.toISOString().split('T')[0]; return calendarEvents.filter(e => e.date === dateStr); }
 function addCalendarEvent() {
@@ -1767,7 +1795,6 @@ function speak(text) {
   if (voice) utterance.voice = voice;
   const finishSpeaking = () => {
     isSpeaking = false;
-    // Esperar 2 segundos antes de reactivar para evitar eco
     setTimeout(() => {
       unduckMic();
       isSpeakingRecognition = false;
@@ -1926,9 +1953,7 @@ function loadTasks() {
   } catch(e) { tasks = []; } 
 }
 function saveTasks() { 
-  // Primero guardar en localStorage (siempre)
   localStorage.setItem('jarvis_tasks', JSON.stringify(tasks));
-  // Luego intentar sincronizar con Firebase, pero sin bloquear ni interrumpir
   syncDataToFirebase().catch(e => console.warn('Sync falló, pero datos locales guardados:', e));
 }
 function renderTasks() {
@@ -1952,7 +1977,7 @@ function deleteTask(id) { if (!confirm('¿Eliminar esta tarea?')) return; const 
 function clearCompletedTasks() { const completed = tasks.filter(t => t.completed); if (completed.length === 0) { speak('No hay tareas completadas.'); return; } tasks = tasks.filter(t => !t.completed); saveTasks(); renderTasks(); speak(`${completed.length} tareas eliminadas.`); }
 function setTasksFilter(filter) { tasksFilter = filter; document.querySelectorAll('.task-tab').forEach(tab => { tab.classList.toggle('active', tab.dataset.tab === filter); }); renderTasks(); }
 
-// ========== RECORDATORIOS (CORREGIDO) ==========
+// ========== RECORDATORIOS ==========
 function checkAndAnnounceReminders() {
   if (!sessionActive) { speak('El sistema no está activo.'); return; }
   const pending = tasks.filter(t => !t.completed);
@@ -1969,7 +1994,6 @@ function checkAndAnnounceReminders() {
   speak(msg);
   addMsg('jarvis', `🔔 ${msg}`);
 }
-// Sobrescribir la función anterior con la nueva
 function checkAutoReminders() {
   if (!sessionActive) return;
   const now = Date.now();
@@ -2003,6 +2027,7 @@ function saveState() {
   localStorage.setItem('jarvis_cfg',JSON.stringify(cfg)); 
   localStorage.setItem('jarvis_macros',JSON.stringify(macros)); 
   localStorage.setItem('jarvis_users',JSON.stringify(users));
+  localStorage.setItem('jarvis_current_user', currentUser || '');
   syncDataToFirebase().catch(e => console.warn('Sync falló, pero datos locales guardados:', e));
 }
 function setTheme(t) { document.documentElement.setAttribute('data-theme',t); document.querySelectorAll('.theme-dot').forEach(d=>d.classList.toggle('active',d.dataset.t===t)); cfg.theme=t; saveState(); }
@@ -2015,7 +2040,6 @@ function updateUserBadge() { const badge = document.getElementById('userBadge');
 
 function parseBuiltIn(text) { 
   const l = text.toLowerCase(); 
-  // Comandos que se manejan completamente y no deben continuar a Groq
   if (l.includes('leer página') || l.includes('leer esta página')) { simulatePageRead('full'); return ''; }
   if (l.includes('leer encabezados') || l.includes('qué dice la página')) { simulatePageRead('headings'); return ''; }
   if(l.includes('abrir calendario')){ openCalendarModal(); return 'Abriendo calendario.'; }
@@ -2032,10 +2056,10 @@ function parseBuiltIn(text) {
   if(l.includes('qué fecha es')) return `Hoy es ${new Date().toLocaleDateString('es-ES')}.`;
   if(l.includes('recordatorio') || l.includes('recordatorios')) { 
     checkAndAnnounceReminders(); 
-    return '';  // Retornamos cadena vacía para indicar que ya se manejó
+    return ''; 
   }
   if(l.includes('ayuda')) { openHelpModal(); return 'Abriendo ayuda.'; }
-  return null; // No se reconoció
+  return null;
 }
 
 function matchMacro(text) { const lower=text.toLowerCase(); for(const m of macros){ const triggers=m.trigger.split(',').map(t=>t.trim().toLowerCase()); if(triggers.some(t=>lower.includes(t))) return m; } return null; }
@@ -2115,10 +2139,10 @@ async function initApp() {
   // Intentar cargar desde Firebase (sobrescribe si hay datos más recientes)
   await loadDataFromFirebase();
   
-  setTheme(cfg.theme||'arc-blue');
-  updateUserBadge();
+  // Aplicar configuración y actualizar interfaz
+  setTheme(cfg.theme || 'arc-blue');
   applyFontSettings();
-  
+  updateUserBadge();   // 👈 Asegurar que se muestre el nombre
   renderTasks();
   renderResponsesLog();
   renderCalendar();
