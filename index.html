@@ -6,6 +6,9 @@
 <title>J.A.R.V.I.S — Stark Industries</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@300;400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <style>
 /* ═══════════════ CSS VARIABLES & THEMES ═══════════════ */
 :root {
@@ -950,7 +953,7 @@ body::after {
   <div class="overlay-sub">Just A Rather Very Intelligent System<br>Stark Industries — v3.0</div>
   <div class="overlay-arc"><svg viewBox="0 0 220 220" fill="none"><circle cx="110" cy="110" r="100" stroke="var(--p)" stroke-width="1" stroke-dasharray="8 6" opacity="0.5"/><circle cx="110" cy="110" r="80" stroke="var(--p)" stroke-width="1.5" stroke-dasharray="4 8" opacity="0.7"/><circle cx="110" cy="110" r="55" stroke="var(--p)" stroke-width="2" opacity="0.9"/><circle cx="110" cy="110" r="30" fill="var(--bg2)" stroke="var(--p)" stroke-width="2"/><text x="110" y="116" text-anchor="middle" fill="var(--p)" font-family="Orbitron" font-size="14" font-weight="800">SI</text></svg></div>
   <button class="btn-start" id="startBtn">▶ INICIAR SISTEMA</button>
-  <div class="overlay-sub" style="font-size:0.68rem;opacity:0.6;">Micrófono siempre activo · Ducking de audio · Macros · Integración Windows</div>
+  <div class="overlay-sub" style="font-size:0.68rem;opacity:0.6;">Micrófono siempre activo · Ducking de audio · Macros · Integración Windows · Sincronización en la nube</div>
 </div>
 
 <div id="app">
@@ -971,7 +974,7 @@ body::after {
     <div id="infoBar">
       <span><div class="dot" id="micDot"></div><span id="timeDisplay">--:--:--</span></span>
       <span id="dateDisplay" style="display:none;"></span>
-      <span id="bridgeStatus"><div class="dot yellow" id="bridgeDot"></div><span id="bridgeLabel">PUENTE: DESCONECTADO</span></span>
+      <span id="bridgeStatus"><div class="dot yellow" id="bridgeDot"></div><span id="bridgeLabel">SINCRONIZANDO...</span></span>
     </div>
     <div id="mainCard">
       <div class="card-br"></div>
@@ -1150,7 +1153,21 @@ body::after {
 <script>
 'use strict';
 
-// CONFIGURACIÓN
+// ========== CONFIGURACIÓN DE FIREBASE ==========
+const firebaseConfig = {
+  apiKey: "AIzaSyDVhl5uIe79h6-zSvO-_rrO4MQhBL5RDAg",
+  authDomain: "jarvis-asistente-72115.firebaseapp.com",
+  projectId: "jarvis-asistente-72115",
+  storageBucket: "jarvis-asistente-72115.firebasestorage.app",
+  messagingSenderId: "999973684557",
+  appId: "1:999973684557:web:5f281b96713863ef53a304"
+};
+
+// Inicializar Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ========== CONFIGURACIÓN LOCAL ==========
 const DEFAULT_CONFIG = { 
   groqKey: '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', 
   speed: 0.92, pitch: 0.90, voiceName: '', lang: 'es-ES', 
@@ -1193,7 +1210,7 @@ let tasksFilter = 'pending';
 // Audio y reconocimiento
 let recognition = null;
 let isSpeaking = false;
-let isSpeakingRecognition = false;   // NUEVA VARIABLE: indica si el asistente está hablando (micrófono en pausa)
+let isSpeakingRecognition = false;
 let mediaStream = null;
 let audioCtx = null;
 let gainNode = null;
@@ -1208,6 +1225,78 @@ let activeModel = '';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-70b-8192'];
+
+// ========== FUNCIONES DE SINCRONIZACIÓN CON FIREBASE ==========
+async function syncDataToFirebase() {
+  try {
+    const data = {
+      macros: macros,
+      settings: cfg,
+      users: users,
+      tasks: tasks,
+      workConfig: workConfig,
+      knowledgeDB: knowledgeDB,
+      calendarEvents: calendarEvents,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    await db.collection('users').doc('jarvis_data').set(data, { merge: true });
+    document.getElementById('bridgeLabel').textContent = 'SINCRONIZADO';
+    document.getElementById('bridgeDot').className = 'dot green';
+    console.log('✅ Datos sincronizados con Firebase');
+  } catch (e) {
+    console.warn('⚠️ Error al sincronizar con Firebase:', e);
+    document.getElementById('bridgeLabel').textContent = 'ERROR SYNC';
+    document.getElementById('bridgeDot').className = 'dot red';
+  }
+}
+
+async function loadDataFromFirebase() {
+  try {
+    const doc = await db.collection('users').doc('jarvis_data').get();
+    if (doc.exists) {
+      const data = doc.data();
+      if (data.macros) macros = data.macros;
+      if (data.settings) cfg = { ...DEFAULT_CONFIG, ...data.settings };
+      if (data.users) users = data.users;
+      if (data.tasks) tasks = data.tasks;
+      if (data.workConfig) workConfig = { ...workConfig, ...data.workConfig };
+      if (data.knowledgeDB) knowledgeDB = data.knowledgeDB;
+      if (data.calendarEvents) calendarEvents = data.calendarEvents;
+      
+      // Actualizar UI
+      applyFontSettings();
+      setTheme(cfg.theme);
+      updateUserBadge();
+      renderTasks();
+      renderResponsesLog();
+      renderCalendar();
+      
+      // Guardar en localStorage como respaldo
+      localStorage.setItem('jarvis_cfg', JSON.stringify(cfg));
+      localStorage.setItem('jarvis_macros', JSON.stringify(macros));
+      localStorage.setItem('jarvis_users', JSON.stringify(users));
+      localStorage.setItem('jarvis_tasks', JSON.stringify(tasks));
+      localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
+      localStorage.setItem('jarvis_knowledge', JSON.stringify(knowledgeDB));
+      localStorage.setItem('jarvis_calendar_events', JSON.stringify(calendarEvents));
+      
+      document.getElementById('bridgeLabel').textContent = 'SINCRONIZADO';
+      document.getElementById('bridgeDot').className = 'dot green';
+      console.log('✅ Datos cargados desde Firebase');
+      return true;
+    } else {
+      console.log('ℹ️ No hay datos en Firebase, usando localStorage');
+      document.getElementById('bridgeLabel').textContent = 'LOCAL';
+      document.getElementById('bridgeDot').className = 'dot yellow';
+      return false;
+    }
+  } catch (e) {
+    console.warn('⚠️ Error al cargar desde Firebase:', e);
+    document.getElementById('bridgeLabel').textContent = 'OFFLINE';
+    document.getElementById('bridgeDot').className = 'dot red';
+    return false;
+  }
+}
 
 // ========== NUEVAS FUNCIONES: CHAT DE TEXTO Y ANÁLISIS DE ARCHIVOS ==========
 function sendTextMessage() {
@@ -1407,7 +1496,10 @@ function simulatePageRead(readType) {
 function loadCalendarEvents() {
   try { const saved = localStorage.getItem('jarvis_calendar_events'); if (saved) calendarEvents = JSON.parse(saved); } catch(e) { calendarEvents = []; }
 }
-function saveCalendarEvents() { localStorage.setItem('jarvis_calendar_events', JSON.stringify(calendarEvents)); }
+function saveCalendarEvents() { 
+  localStorage.setItem('jarvis_calendar_events', JSON.stringify(calendarEvents));
+  syncDataToFirebase(); // Sincronizar con la nube
+}
 function getEventsForDate(date) { const dateStr = date.toISOString().split('T')[0]; return calendarEvents.filter(e => e.date === dateStr); }
 function addCalendarEvent() {
   const title = document.getElementById('eventTitle').value.trim();
@@ -1721,6 +1813,7 @@ function saveWorkConfig() {
   workConfig.workDays = [];
   document.querySelectorAll('.workday-check:checked').forEach(cb => { workConfig.workDays.push(parseInt(cb.value)); });
   localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
+  syncDataToFirebase();
   speak('Configuración laboral guardada correctamente.');
 }
 function addWorkResponse(eventType, responseText) {
@@ -1728,6 +1821,7 @@ function addWorkResponse(eventType, responseText) {
   workConfig.responses.unshift({ id: Date.now(), type: eventType, response: responseText, timestamp: now.toISOString(), time: now.toLocaleTimeString('es-ES') });
   if (workConfig.responses.length > 50) workConfig.responses.pop();
   localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
+  syncDataToFirebase();
   renderResponsesLog();
 }
 function renderResponsesLog() {
@@ -1776,6 +1870,7 @@ function processWorkResponse(eventType, responseText) {
   if (statusDiv) { statusDiv.className = 'work-hour-status completed'; statusDiv.innerHTML = `✅ ${responseText.substring(0, 30)}`; }
   workConfig.alerts[eventType] = false;
   localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
+  syncDataToFirebase();
   speak(`Registrado: ${responseText}`);
   addMsg('jarvis', `✅ Respuesta registrada: ${responseText}`);
   window.pendingWorkResponse = null;
@@ -1793,7 +1888,10 @@ function resetDailyAlerts() {
 
 // ========== TAREAS ==========
 function loadTasks() { try { const saved = localStorage.getItem('jarvis_tasks'); if (saved) tasks = JSON.parse(saved); } catch(e) { tasks = []; } }
-function saveTasks() { localStorage.setItem('jarvis_tasks', JSON.stringify(tasks)); }
+function saveTasks() { 
+  localStorage.setItem('jarvis_tasks', JSON.stringify(tasks));
+  syncDataToFirebase();
+}
 function renderTasks() {
   const container = document.getElementById('taskList');
   if (!container) return;
@@ -1850,7 +1948,12 @@ function loadState() {
   if(!cfg.fontSizeBase) cfg.fontSizeBase = DEFAULT_CONFIG.fontSizeBase;
   applyFontSettings();
 }
-function saveState() { localStorage.setItem('jarvis_cfg',JSON.stringify(cfg)); localStorage.setItem('jarvis_macros',JSON.stringify(macros)); localStorage.setItem('jarvis_users',JSON.stringify(users)); }
+function saveState() { 
+  localStorage.setItem('jarvis_cfg',JSON.stringify(cfg)); 
+  localStorage.setItem('jarvis_macros',JSON.stringify(macros)); 
+  localStorage.setItem('jarvis_users',JSON.stringify(users));
+  syncDataToFirebase();
+}
 function setTheme(t) { document.documentElement.setAttribute('data-theme',t); document.querySelectorAll('.theme-dot').forEach(d=>d.classList.toggle('active',d.dataset.t===t)); cfg.theme=t; saveState(); }
 function accionMusica() { window.open(cfg.musicUrl || DEFAULT_CONFIG.musicUrl, '_blank'); speak('Reproduciendo música.'); }
 function accionClima() { window.open(cfg.weatherUrl || DEFAULT_CONFIG.weatherUrl, '_blank'); speak('Abriendo el clima.'); }
@@ -1906,7 +2009,7 @@ function refreshExportPreview(){ document.getElementById('exportPreview').value=
 function exportConfig(){ const data=JSON.stringify(getFullConfig(),null,2); const blob=new Blob([data],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='jarvis-config.json'; a.click(); URL.revokeObjectURL(url); }
 function switchTab(tab){ document.getElementById('panelExport').style.display=tab==='export'?'':'none'; document.getElementById('panelImport').style.display=tab==='import'?'':'none'; document.getElementById('tabExport').className=tab==='export'?'tab active':'tab'; document.getElementById('tabImport').className=tab==='import'?'tab active':'tab'; if(tab==='export') refreshExportPreview(); }
 function loadImportFile(e){ const file=e.target.files[0]; if(!file) return; const r=new FileReader(); r.onload=ev=>{ document.getElementById('importJson').value=ev.target.result; }; r.readAsText(file); }
-function importConfig(){ try{ const d=JSON.parse(document.getElementById('importJson').value); if(d.macros) macros=d.macros; if(d.settings) cfg={...DEFAULT_CONFIG,...d.settings}; if(d.users) users=d.users; if(d.tasks) tasks=d.tasks; if(d.workConfig) workConfig={...workConfig,...d.workConfig}; if(d.knowledgeDB) knowledgeDB=d.knowledgeDB; if(d.calendarEvents) calendarEvents=d.calendarEvents; saveState(); saveTasks(); localStorage.setItem('jarvis_work_config',JSON.stringify(workConfig)); localStorage.setItem('jarvis_knowledge',JSON.stringify(knowledgeDB)); localStorage.setItem('jarvis_calendar_events',JSON.stringify(calendarEvents)); setTheme(cfg.theme); applyFontSettings(); closeModal('backupModal'); renderTasks(); renderResponsesLog(); checkGroq(); updateUserBadge(); speak('Configuración restaurada.'); }catch(e){ alert('JSON inválido'); } }
+function importConfig(){ try{ const d=JSON.parse(document.getElementById('importJson').value); if(d.macros) macros=d.macros; if(d.settings) cfg={...DEFAULT_CONFIG,...d.settings}; if(d.users) users=d.users; if(d.tasks) tasks=d.tasks; if(d.workConfig) workConfig={...workConfig,...d.workConfig}; if(d.knowledgeDB) knowledgeDB=d.knowledgeDB; if(d.calendarEvents) calendarEvents=d.calendarEvents; saveState(); saveTasks(); localStorage.setItem('jarvis_work_config',JSON.stringify(workConfig)); localStorage.setItem('jarvis_knowledge',JSON.stringify(knowledgeDB)); localStorage.setItem('jarvis_calendar_events',JSON.stringify(calendarEvents)); syncDataToFirebase(); setTheme(cfg.theme); applyFontSettings(); closeModal('backupModal'); renderTasks(); renderResponsesLog(); checkGroq(); updateUserBadge(); speak('Configuración restaurada.'); }catch(e){ alert('JSON inválido'); } }
 function clearConversation(){ const conv=document.getElementById('conversation'); conv.querySelectorAll('.msg:not(#typingIndicator)').forEach(m=>m.remove()); addMsg('jarvis','Chat limpiado.'); }
 function addMsg(role,text){ const conv=document.getElementById('conversation'); const ti=document.getElementById('typingIndicator'); const div=document.createElement('div'); div.className=`msg ${role}`; const ts=new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}); div.innerHTML=`<div class="msg-avatar">${role==='jarvis'?'⚡':'👤'}</div><div class="msg-body"><div class="msg-label">${role==='jarvis'?'J.A.R.V.I.S':userName()} — ${ts}</div><div class="msg-text">${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div></div>`; conv.insertBefore(div,ti); div.scrollIntoView({behavior:'smooth',block:'nearest'}); }
 function userName(){ return currentUser?(users[currentUser]?.name||'TÚ').toUpperCase():'TÚ'; }
@@ -1933,13 +2036,28 @@ async function processCommand(text) {
 function showTyping(show){ document.getElementById('typingIndicator').style.display=show?'flex':'none'; }
 
 // ========== INICIALIZACIÓN ==========
-loadState();
-loadWorkConfig();
-loadTasks();
-loadCalendarEvents();
-setTheme(cfg.theme||'arc-blue');
-updateUserBadge();
-applyFontSettings();
+async function initApp() {
+  loadState();
+  loadWorkConfig();
+  loadTasks();
+  loadCalendarEvents();
+  
+  // Intentar cargar desde Firebase (sobrescribe si hay datos más recientes)
+  await loadDataFromFirebase();
+  
+  setTheme(cfg.theme||'arc-blue');
+  updateUserBadge();
+  applyFontSettings();
+  
+  renderTasks();
+  renderResponsesLog();
+  renderCalendar();
+  
+  // Sincronizar periódicamente cada 60 segundos
+  setInterval(() => {
+    syncDataToFirebase();
+  }, 60000);
+}
 
 document.getElementById('cfgFontSizeBase').oninput = function(){ document.getElementById('fontSizeBaseVal').textContent=this.value+'px'; };
 document.getElementById('cfgSpeed').oninput = function(){ document.getElementById('speedVal').textContent=this.value; };
@@ -1956,7 +2074,9 @@ document.getElementById('startBtn').onclick = async () => {
   if (hasPermission) { await startJarvisSystem(); } else { showMicPermissionDialog(); }
 };
 
-renderTasks();
+// Iniciar la aplicación
+initApp();
+
 setInterval(() => { document.getElementById('timeDisplay').textContent = new Date().toLocaleTimeString('es-ES'); resetDailyAlerts(); }, 1000);
 </script>
 </body>
