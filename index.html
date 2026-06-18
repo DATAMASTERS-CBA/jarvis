@@ -944,6 +944,23 @@ body::after {
   color: var(--dim);
   border-left: 2px solid var(--p);
 }
+
+/* Botón de sincronización manual */
+.sync-btn {
+  background: var(--glass);
+  border: 1px solid var(--glass-b);
+  border-radius: 20px;
+  padding: 4px 12px;
+  color: var(--p);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.sync-btn:hover {
+  background: var(--bg3);
+  border-color: var(--p);
+}
 </style>
 </head>
 <body>
@@ -1020,9 +1037,10 @@ body::after {
   <div class="tasks-panel">
     <div class="tasks-header">
       📋 SISTEMA DE TAREAS
-      <div style="display: flex; gap: 8px;">
+      <div style="display: flex; gap: 8px; align-items: center;">
         <div class="calendar-btn-icon" title="Calendario" onclick="openCalendarModal()">📅</div>
         <div class="work-btn-icon" title="Control de Jornada Laboral" onclick="openModal('workModal')">🏢</div>
+        <button class="sync-btn" onclick="syncDataToFirebase()" title="Sincronizar ahora con la nube">☁️ SYNC</button>
       </div>
     </div>
     
@@ -1228,6 +1246,10 @@ const GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-
 
 // ========== FUNCIONES DE SINCRONIZACIÓN CON FIREBASE ==========
 async function syncDataToFirebase() {
+  const bridgeLabel = document.getElementById('bridgeLabel');
+  const bridgeDot = document.getElementById('bridgeDot');
+  bridgeLabel.textContent = 'SINCRONIZANDO...';
+  bridgeDot.className = 'dot yellow';
   try {
     const data = {
       macros: macros,
@@ -1240,13 +1262,15 @@ async function syncDataToFirebase() {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     await db.collection('users').doc('jarvis_data').set(data, { merge: true });
-    document.getElementById('bridgeLabel').textContent = 'SINCRONIZADO';
-    document.getElementById('bridgeDot').className = 'dot green';
+    bridgeLabel.textContent = 'SINCRONIZADO';
+    bridgeDot.className = 'dot green';
     console.log('✅ Datos sincronizados con Firebase');
+    return true;
   } catch (e) {
     console.warn('⚠️ Error al sincronizar con Firebase:', e);
-    document.getElementById('bridgeLabel').textContent = 'ERROR SYNC';
-    document.getElementById('bridgeDot').className = 'dot red';
+    bridgeLabel.textContent = 'ERROR SYNC';
+    bridgeDot.className = 'dot red';
+    return false;
   }
 }
 
@@ -1255,15 +1279,16 @@ async function loadDataFromFirebase() {
     const doc = await db.collection('users').doc('jarvis_data').get();
     if (doc.exists) {
       const data = doc.data();
+      // Solo sobrescribimos si el campo existe y no es undefined
       if (data.macros) macros = data.macros;
       if (data.settings) cfg = { ...DEFAULT_CONFIG, ...data.settings };
       if (data.users) users = data.users;
-      if (data.tasks) tasks = data.tasks;
+      // No sobrescribir con array vacío si ya tenemos tareas locales
+      if (data.tasks && data.tasks.length > 0) tasks = data.tasks;
       if (data.workConfig) workConfig = { ...workConfig, ...data.workConfig };
       if (data.knowledgeDB) knowledgeDB = data.knowledgeDB;
-      if (data.calendarEvents) calendarEvents = data.calendarEvents;
+      if (data.calendarEvents && data.calendarEvents.length > 0) calendarEvents = data.calendarEvents;
       
-      // Actualizar UI
       applyFontSettings();
       setTheme(cfg.theme);
       updateUserBadge();
@@ -1887,10 +1912,17 @@ function resetDailyAlerts() {
 }
 
 // ========== TAREAS ==========
-function loadTasks() { try { const saved = localStorage.getItem('jarvis_tasks'); if (saved) tasks = JSON.parse(saved); } catch(e) { tasks = []; } }
+function loadTasks() { 
+  try { 
+    const saved = localStorage.getItem('jarvis_tasks'); 
+    if (saved) tasks = JSON.parse(saved); 
+  } catch(e) { tasks = []; } 
+}
 function saveTasks() { 
+  // Primero guardar en localStorage (siempre)
   localStorage.setItem('jarvis_tasks', JSON.stringify(tasks));
-  syncDataToFirebase();
+  // Luego intentar sincronizar con Firebase, pero sin bloquear ni interrumpir
+  syncDataToFirebase().catch(e => console.warn('Sync falló, pero datos locales guardados:', e));
 }
 function renderTasks() {
   const container = document.getElementById('taskList');
@@ -1952,7 +1984,7 @@ function saveState() {
   localStorage.setItem('jarvis_cfg',JSON.stringify(cfg)); 
   localStorage.setItem('jarvis_macros',JSON.stringify(macros)); 
   localStorage.setItem('jarvis_users',JSON.stringify(users));
-  syncDataToFirebase();
+  syncDataToFirebase().catch(e => console.warn('Sync falló, pero datos locales guardados:', e));
 }
 function setTheme(t) { document.documentElement.setAttribute('data-theme',t); document.querySelectorAll('.theme-dot').forEach(d=>d.classList.toggle('active',d.dataset.t===t)); cfg.theme=t; saveState(); }
 function accionMusica() { window.open(cfg.musicUrl || DEFAULT_CONFIG.musicUrl, '_blank'); speak('Reproduciendo música.'); }
