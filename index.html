@@ -961,11 +961,6 @@ body::after {
   background: var(--bg3);
   border-color: var(--p);
 }
-
-/* OCULTAR BOTÓN DE INICIO (no se usa) */
-#startBtn {
-  display: none !important;
-}
 </style>
 </head>
 <body>
@@ -1192,7 +1187,7 @@ const db = firebase.firestore();
 
 // ========== CONFIGURACIÓN LOCAL ==========
 const DEFAULT_CONFIG = { 
-  groqKey: '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', // NUEVA API KEY
+  groqKey: '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', 
   speed: 0.92, pitch: 0.90, voiceName: '', lang: 'es-ES', 
   bridgeUrl: 'ws://localhost:8765', theme: 'arc-blue',
   musicUrl: 'https://www.youtube.com/results?search_query=relaxing+music',
@@ -1245,14 +1240,10 @@ let selectedVoice = null;
 let mediaStreamActive = false;
 let apiAvailable = false;
 let activeModel = '';
+let isProcessing = false; // Nuevo flag para evitar procesamiento concurrente
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-70b-8192'];
-
-// ========== DETECCIÓN DE DISPOSITIVO MÓVIL ==========
-function isMobile() {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
-}
 
 // ========== FUNCIONES DE SINCRONIZACIÓN CON FIREBASE ==========
 async function syncDataToFirebase() {
@@ -1735,7 +1726,7 @@ function startRecognition() {
   recognition.onend = () => {
     document.getElementById('micDot').className = 'dot yellow';
     document.getElementById('micDot2').className = 'dot yellow';
-    // Si el asistente está hablando, NO reiniciamos (lo hará speak después de 1s)
+    // Si el asistente está hablando, NO reiniciamos (lo hará speak después de 1.5s)
     if (isSpeakingRecognition) {
       return;
     }
@@ -1750,7 +1741,7 @@ function startRecognition() {
     }
   };
   recognition.onerror = (e) => { if (e.error === 'no-speech') return; if (sessionActive && isMicReady) setTimeout(() => { try { recognition.start(); } catch(e) {} }, 1000); };
-  recognition.onresult = (e) => { if (isSpeaking) return; let transcript = ''; for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { transcript = e.results[i][0].transcript; break; } if (transcript.trim()) processCommand(transcript.trim()); };
+  recognition.onresult = (e) => { if (isSpeaking || isProcessing) return; let transcript = ''; for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { transcript = e.results[i][0].transcript; break; } if (transcript.trim()) processCommand(transcript.trim()); };
   try { recognition.start(); } catch(e) { console.warn(e); }
 }
 
@@ -1783,7 +1774,7 @@ function speak(text) {
           }, 1000);
         }
       }
-    }, 1000);
+    }, 1500); // Aumentado a 1.5 segundos para evitar eco
   };
   utterance.onend = finishSpeaking;
   utterance.onerror = finishSpeaking;
@@ -1954,13 +1945,25 @@ function editTask(id) { const task = tasks.find(t => t.id == id); if (!task) ret
 function deleteTask(id) { if (!confirm('¿Eliminar esta tarea?')) return; const task = tasks.find(t => t.id == id); tasks = tasks.filter(t => t.id != id); saveTasks(); renderTasks(); if (task) speak(`Tarea "${task.title}" eliminada.`); }
 function clearCompletedTasks() { const completed = tasks.filter(t => t.completed); if (completed.length === 0) { speak('No hay tareas completadas.'); return; } tasks = tasks.filter(t => !t.completed); saveTasks(); renderTasks(); speak(`${completed.length} tareas eliminadas.`); }
 function setTasksFilter(filter) { tasksFilter = filter; document.querySelectorAll('.task-tab').forEach(tab => { tab.classList.toggle('active', tab.dataset.tab === filter); }); renderTasks(); }
+
+// ========== RECORDATORIOS (CORREGIDO) ==========
 function checkAndAnnounceReminders() {
   if (!sessionActive) { speak('El sistema no está activo.'); return; }
-  const pending = tasks.filter(t => !t.completed && t.date && t.time);
-  if (pending.length === 0) { speak('No tiene recordatorios pendientes.'); return; }
-  let msg = `Tiene ${pending.length} recordatorio${pending.length > 1 ? 's' : ''} pendiente${pending.length > 1 ? 's' : ''}: ` + pending.map(t => `${t.title} (${t.priority === 'urgente' ? 'URGENTE' : 'NORMAL'}) para el ${t.date} a las ${t.time}`).join(', ');
-  speak(msg); addMsg('jarvis', `🔔 ${msg}`);
+  const pending = tasks.filter(t => !t.completed);
+  if (pending.length === 0) { speak('No tiene tareas pendientes.'); return; }
+  let msg = `Tiene ${pending.length} tarea${pending.length > 1 ? 's' : ''} pendiente${pending.length > 1 ? 's' : ''}: `;
+  const items = pending.map(t => {
+    let detail = `${t.title} (${t.priority === 'urgente' ? 'URGENTE' : 'NORMAL'})`;
+    if (t.date && t.time) detail += ` para el ${t.date} a las ${t.time}`;
+    else if (t.date) detail += ` para el ${t.date}`;
+    else if (t.time) detail += ` a las ${t.time}`;
+    return detail;
+  });
+  msg += items.join(', ');
+  speak(msg);
+  addMsg('jarvis', `🔔 ${msg}`);
 }
+// Sobrescribir la función anterior con la nueva
 function checkAutoReminders() {
   if (!sessionActive) return;
   const now = Date.now();
@@ -2019,7 +2022,10 @@ function parseBuiltIn(text) {
   }
   if(l.includes('qué hora es')) return `Son las ${new Date().toLocaleTimeString('es-ES')}.`;
   if(l.includes('qué fecha es')) return `Hoy es ${new Date().toLocaleDateString('es-ES')}.`;
-  if(l.includes('recordatorio')) { checkAndAnnounceReminders(); return null; }
+  if(l.includes('recordatorio') || l.includes('recordatorios')) { 
+    checkAndAnnounceReminders(); 
+    return null; 
+  }
   if(l.includes('ayuda')) { openHelpModal(); return 'Abriendo ayuda.'; }
   return null;
 }
@@ -2058,52 +2064,32 @@ function userName(){ return currentUser?(users[currentUser]?.name||'TÚ').toUppe
 function greet(){ const part = new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches'); const name = currentUser ? users[currentUser].name : ''; speak(name ? `${part}, ${name}. Soy JARVIS. Sistema listo.` : `${part}. Soy JARVIS. Sistema listo.`); }
 
 async function processCommand(text) {
-  if (!text) return;
-  if (window.pendingWorkResponse) { processWorkResponse(window.pendingWorkResponse, text); window.pendingWorkResponse = null; return; }
-  if (parseAgendarCommand(text)) { return; }
-  const userName = currentUser ? users[currentUser].name : 'señor';
-  const nameMatch = text.match(/me llamo (\w+)|mi nombre es (\w+)|soy (\w+)/i);
-  if (nameMatch && !currentUser) { const name = (nameMatch[1]||nameMatch[2]||nameMatch[3]); registerUser(name); addMsg('user', text); speak(`Encantado, ${name}.`); return; }
-  const changeNameMatch = text.match(/cambia mi nombre a (\w+)|cámbiame el nombre a (\w+)/i);
-  if (changeNameMatch && sessionActive) { const newName = (changeNameMatch[1] || changeNameMatch[2]); if (newName) { if (currentUser) { const oldName = users[currentUser].name; const newId = newName.toLowerCase(); if (currentUser !== newId) { users[newId] = { ...users[currentUser], name: newName }; delete users[currentUser]; currentUser = newId; } else { users[currentUser].name = newName; } saveState(); updateUserBadge(); speak(`He cambiado su nombre de ${oldName} a ${newName}.`); } else { registerUser(newName); } return; } }
-  addMsg('user', text);
-  const macro = matchMacro(text); if (macro) { executeMacro(macro, text); return; }
-  const built = parseBuiltIn(text); if (built) { if(built !== null) speak(built); return; }
-  showTyping(true);
-  let resp = await askGroq(text, userName);
-  showTyping(false);
-  if (!resp) resp = `Entendido, ${userName}. No puedo procesar eso.`;
-  speak(resp);
+  if (!text || isProcessing) return;
+  isProcessing = true;
+  try {
+    if (window.pendingWorkResponse) { processWorkResponse(window.pendingWorkResponse, text); window.pendingWorkResponse = null; isProcessing = false; return; }
+    if (parseAgendarCommand(text)) { isProcessing = false; return; }
+    const userName = currentUser ? users[currentUser].name : 'señor';
+    const nameMatch = text.match(/me llamo (\w+)|mi nombre es (\w+)|soy (\w+)/i);
+    if (nameMatch && !currentUser) { const name = (nameMatch[1]||nameMatch[2]||nameMatch[3]); registerUser(name); addMsg('user', text); speak(`Encantado, ${name}.`); isProcessing = false; return; }
+    const changeNameMatch = text.match(/cambia mi nombre a (\w+)|cámbiame el nombre a (\w+)/i);
+    if (changeNameMatch && sessionActive) { const newName = (changeNameMatch[1] || changeNameMatch[2]); if (newName) { if (currentUser) { const oldName = users[currentUser].name; const newId = newName.toLowerCase(); if (currentUser !== newId) { users[newId] = { ...users[currentUser], name: newName }; delete users[currentUser]; currentUser = newId; } else { users[currentUser].name = newName; } saveState(); updateUserBadge(); speak(`He cambiado su nombre de ${oldName} a ${newName}.`); } else { registerUser(newName); } } isProcessing = false; return; }
+    addMsg('user', text);
+    const macro = matchMacro(text); if (macro) { executeMacro(macro, text); isProcessing = false; return; }
+    const built = parseBuiltIn(text); if (built !== null) { speak(built); isProcessing = false; return; }
+    showTyping(true);
+    let resp = await askGroq(text, userName);
+    showTyping(false);
+    if (!resp) resp = `Entendido, ${userName}. No puedo procesar eso.`;
+    speak(resp);
+  } catch(e) {
+    console.error(e);
+    speak('Ocurrió un error.');
+  } finally {
+    isProcessing = false;
+  }
 }
 function showTyping(show){ document.getElementById('typingIndicator').style.display=show?'flex':'none'; }
-
-// ========== INICIO AUTOMÁTICO Y DETECCIÓN MÓVIL ==========
-function iniciarSistema() {
-  const overlay = document.getElementById('startOverlay');
-  overlay.classList.add('hide');
-  const hasPermission = localStorage.getItem('jarvis_mic_permission') === 'granted';
-  if (hasPermission) {
-    startJarvisSystem();
-  } else {
-    showMicPermissionDialog();
-  }
-}
-
-function iniciarAutomatico() {
-  const overlay = document.getElementById('startOverlay');
-  const sub = document.querySelector('.overlay-sub:not([style*="font-size"])'); // el primer subtitle
-  
-  if (isMobile()) {
-    // En móviles: mostrar mensaje táctil y esperar toque
-    if (sub) sub.textContent = 'TOQUE LA PANTALLA PARA ACTIVAR J.A.R.V.I.S';
-    // Eliminar listener previo si existe
-    overlay.removeEventListener('touchstart', iniciarSistema);
-    overlay.addEventListener('touchstart', iniciarSistema);
-  } else {
-    // En PC: iniciar después de 1 segundo
-    setTimeout(iniciarSistema, 1000);
-  }
-}
 
 // ========== INICIALIZACIÓN ==========
 async function initApp() {
@@ -2127,9 +2113,15 @@ async function initApp() {
   setInterval(() => {
     syncDataToFirebase();
   }, 60000);
-  
-  // Inicio automático
-  iniciarAutomatico();
+
+  // === INICIO AUTOMÁTICO ===
+  const hasPermission = localStorage.getItem('jarvis_mic_permission') === 'granted';
+  document.getElementById('startOverlay').classList.add('hide');
+  if (hasPermission) {
+    await startJarvisSystem();
+  } else {
+    showMicPermissionDialog();
+  }
 }
 
 document.getElementById('cfgFontSizeBase').oninput = function(){ document.getElementById('fontSizeBaseVal').textContent=this.value+'px'; };
@@ -2141,8 +2133,11 @@ document.getElementById('checkRemindersBtn').onclick = () => { checkAndAnnounceR
 document.getElementById('saveWorkHoursBtn').onclick = saveWorkConfig;
 document.querySelectorAll('.task-tab').forEach(tab => { tab.onclick = () => setTasksFilter(tab.dataset.tab); });
 
-// El botón startBtn ya no se usa, pero por si acaso lo desactivamos
-document.getElementById('startBtn').style.display = 'none';
+document.getElementById('startBtn').onclick = async () => {
+  document.getElementById('startOverlay').classList.add('hide');
+  const hasPermission = localStorage.getItem('jarvis_mic_permission') === 'granted';
+  if (hasPermission) { await startJarvisSystem(); } else { showMicPermissionDialog(); }
+};
 
 // Iniciar la aplicación
 initApp();
