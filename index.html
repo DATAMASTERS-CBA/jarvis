@@ -1193,6 +1193,7 @@ let tasksFilter = 'pending';
 // Audio y reconocimiento
 let recognition = null;
 let isSpeaking = false;
+let isSpeakingRecognition = false;   // NUEVA VARIABLE: indica si el asistente está hablando (micrófono en pausa)
 let mediaStream = null;
 let audioCtx = null;
 let gainNode = null;
@@ -1604,7 +1605,23 @@ function startRecognition() {
   recognition.continuous = true;
   recognition.interimResults = false;
   recognition.onstart = () => { document.getElementById('micDot').className = 'dot green'; document.getElementById('micDot2').className = 'dot green'; document.getElementById('voiceLabel').textContent = 'ESCUCHANDO'; };
-  recognition.onend = () => { document.getElementById('micDot').className = 'dot yellow'; document.getElementById('micDot2').className = 'dot yellow'; if (sessionActive && isMicReady) setTimeout(() => { if (sessionActive) try { recognition.start(); } catch(e) {} }, 500); else if (!sessionActive) document.getElementById('voiceLabel').textContent = 'STANDBY'; };
+  recognition.onend = () => {
+    document.getElementById('micDot').className = 'dot yellow';
+    document.getElementById('micDot2').className = 'dot yellow';
+    // Si el asistente está hablando, NO reiniciamos (lo hará speak después de 1s)
+    if (isSpeakingRecognition) {
+      return;
+    }
+    if (sessionActive && isMicReady) {
+      setTimeout(() => {
+        if (sessionActive && !isSpeakingRecognition) {
+          try { recognition.start(); } catch(e) {}
+        }
+      }, 500);
+    } else if (!sessionActive) {
+      document.getElementById('voiceLabel').textContent = 'STANDBY';
+    }
+  };
   recognition.onerror = (e) => { if (e.error === 'no-speech') return; if (sessionActive && isMicReady) setTimeout(() => { try { recognition.start(); } catch(e) {} }, 1000); };
   recognition.onresult = (e) => { if (isSpeaking) return; let transcript = ''; for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { transcript = e.results[i][0].transcript; break; } if (transcript.trim()) processCommand(transcript.trim()); };
   try { recognition.start(); } catch(e) { console.warn(e); }
@@ -1615,19 +1632,38 @@ function speak(text) {
   if (!text) return;
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   duckMic();
-  isSpeaking = true;
+  if (recognition) {
+    try { recognition.stop(); } catch (e) {}
+  }
+  isSpeakingRecognition = true;
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = cfg.lang;
   utterance.rate = cfg.speed;
   utterance.pitch = cfg.pitch;
   const voice = getVoice();
   if (voice) utterance.voice = voice;
-  utterance.onend = () => { isSpeaking = false; unduckMic(); };
-  utterance.onerror = () => { isSpeaking = false; unduckMic(); };
+  const finishSpeaking = () => {
+    isSpeaking = false;
+    setTimeout(() => {
+      unduckMic();
+      isSpeakingRecognition = false;
+      if (sessionActive && isMicReady && recognition) {
+        try { recognition.start(); } catch (e) {
+          setTimeout(() => {
+            if (sessionActive && isMicReady && recognition) {
+              try { recognition.start(); } catch (e) {}
+            }
+          }, 1000);
+        }
+      }
+    }, 1000);
+  };
+  utterance.onend = finishSpeaking;
+  utterance.onerror = finishSpeaking;
   window.speechSynthesis.speak(utterance);
   addMsg('jarvis', text);
 }
-function stopSpeaking() { if (window.speechSynthesis) window.speechSynthesis.cancel(); isSpeaking = false; unduckMic(); }
+function stopSpeaking() { if (window.speechSynthesis) window.speechSynthesis.cancel(); isSpeaking = false; unduckMic(); isSpeakingRecognition = false; }
 function getVoice() { const voices = window.speechSynthesis.getVoices(); return voices.find(v => v.lang.startsWith('es')) || null; }
 function loadVoices() {
   const voices = window.speechSynthesis.getVoices();
