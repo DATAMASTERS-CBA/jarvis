@@ -954,7 +954,7 @@ body::after {
         <div id="typingIndicator" class="msg jarvis"><div class="msg-avatar">⚡</div><div class="msg-body"><div class="msg-label">J.A.R.V.I.S</div><div class="msg-text" style="display:flex;align-items:center;gap:4px;"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div></div></div>
       </div>
       
-      <!-- Área de chat de texto ELIMINADA (ya no se usa) -->
+      <!-- Área de chat de texto ELIMINADA -->
       
       <div id="apiStatus">🔌 Verificando conexión con Groq...</div>
     </div>
@@ -1170,10 +1170,12 @@ let isProcessing = false;
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-70b-8192'];
 
-// ===== VARIABLES PARA LA WAKE WORD =====
+// ===== VARIABLES PARA LA WAKE WORD CON TEMPORIZADOR =====
 let waitingForWake = true;
 let isActivated = false;
+let wakeTimer = null;
 const WAKE_WORD = 'jarvis';
+const WAKE_TIMEOUT = 30000; // 30 segundos
 
 // ===== FUNCIÓN PARA CAMBIAR ESTADO DEL MICRÓFONO =====
 function setMicState(state) {
@@ -1192,16 +1194,32 @@ function setMicState(state) {
 
 // ===== DESTELLO ROJO (flash) =====
 function flashMicRed() {
-  if (isSpeaking) return; // No interrumpir si JARVIS está hablando
+  if (isSpeaking) return;
   setMicState('flash');
   setTimeout(() => {
-    // Volver a idle o listening según el estado del reconocimiento
     if (recognition && sessionActive) {
       setMicState('listening');
     } else {
       setMicState('idle');
     }
   }, 800);
+}
+
+// ===== REINICIO DEL TEMPORIZADOR DE WAKE =====
+function resetWakeTimer() {
+  if (wakeTimer) {
+    clearTimeout(wakeTimer);
+    wakeTimer = null;
+  }
+  if (isActivated) {
+    wakeTimer = setTimeout(() => {
+      // Volver a esperar "Jarvis"
+      waitingForWake = true;
+      isActivated = false;
+      if (!isSpeaking) setMicState('idle');
+      console.log('⏰ Tiempo de escucha agotado, esperando "Jarvis"');
+    }, WAKE_TIMEOUT);
+  }
 }
 
 // ========== FUNCIONES DE SINCRONIZACIÓN CON FIREBASE ==========
@@ -1688,7 +1706,12 @@ function speak(text) {
           }, 1000);
         }
       }
-      setMicState('idle');
+      // Después de hablar, si estamos en modo activado, mantener verde; si no, idle
+      if (isActivated) {
+        setMicState('listening');
+      } else {
+        setMicState('idle');
+      }
     }, 2000);
   };
   utterance.onend = finishSpeaking;
@@ -1701,7 +1724,11 @@ function stopSpeaking() {
   isSpeaking = false;
   unduckMic();
   isSpeakingRecognition = false;
-  setMicState('idle');
+  if (isActivated) {
+    setMicState('listening');
+  } else {
+    setMicState('idle');
+  }
 }
 function getVoice() { const voices = window.speechSynthesis.getVoices(); return voices.find(v => v.lang.startsWith('es')) || null; }
 function loadVoices() {
@@ -2058,7 +2085,7 @@ function addMsg(role,text){ const conv=document.getElementById('conversation'); 
 function userName(){ return currentUser?(users[currentUser]?.name||'TÚ').toUpperCase():'TÚ'; }
 function greet(){ const part = new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches'); const name = currentUser ? users[currentUser].name : ''; speak(name ? `${part}, ${name}. Soy JARVIS. Sistema listo.` : `${part}. Soy JARVIS. Sistema listo.`); }
 
-// ========== PROCESAMIENTO DE COMANDOS (CON WAKE WORD Y FLASH) ==========
+// ========== PROCESAMIENTO DE COMANDOS (CON WAKE WORD, TEMPORIZADOR Y FLASH) ==========
 async function processCommand(text) {
   if (!text || isProcessing) return;
   const trimmed = text.trim();
@@ -2069,34 +2096,35 @@ async function processCommand(text) {
     const lower = trimmed.toLowerCase();
     const idx = lower.indexOf(WAKE_WORD);
     if (idx === -1) {
-      // No contiene "jarvis": ignorar, pero mostrar flash rojo
+      // No contiene "jarvis": ignorar, flash rojo
       flashMicRed();
       return;  // No se agrega mensaje al chat
     }
-    // Contiene "jarvis": mostrar el mensaje y procesar
+    // Contiene "jarvis": mostrar mensaje y activar modo escucha
     addMsg('user', trimmed);
     let rest = trimmed.substring(idx + WAKE_WORD.length).trim();
     rest = rest.replace(/^[,;:.\s]+/, '');
+    // Activar modo escucha por 30 segundos
+    waitingForWake = false;
+    isActivated = true;
+    resetWakeTimer(); // Inicia el temporizador
     if (rest === '') {
       // Solo dijo "jarvis"
       speak('¿En qué puedo ayudarle?');
-      waitingForWake = false;
-      isActivated = true;
+      // El temporizador ya está corriendo
       return;
     } else {
-      waitingForWake = false;
-      isActivated = true;
+      // Tiene comando: procesar
       await processActualCommand(rest);
-      waitingForWake = true;
-      isActivated = false;
+      // El temporizador se reinicia al recibir nueva frase (ver más abajo)
       return;
     }
   } else {
-    // Ya activado (porque antes se dijo "jarvis")
+    // Estamos en modo activado: procesar cualquier frase
     addMsg('user', trimmed);
     await processActualCommand(trimmed);
-    waitingForWake = true;
-    isActivated = false;
+    // Reiniciar temporizador tras procesar el comando
+    resetWakeTimer();
   }
 }
 
