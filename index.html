@@ -863,106 +863,7 @@ body::after {
   border-color: var(--p);
 }
 
-/* ===== NUEVOS ESTILOS PARA CHAT DE TEXTO Y SUBIDA DE ARCHIVOS ===== */
-.chat-input-container {
-  margin-top: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background: rgba(0,0,0,0.2);
-  border-radius: 16px;
-  padding: 12px;
-  border: 1px solid var(--glass-b);
-}
-.chat-input-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.chat-input-field {
-  flex: 1;
-  background: rgba(0,0,0,0.4);
-  border: 1px solid var(--glass-b);
-  border-radius: 20px;
-  padding: 10px 16px;
-  color: var(--text);
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 0.85rem;
-  outline: none;
-  transition: var(--transition);
-}
-.chat-input-field:focus {
-  border-color: var(--p);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--p) 20%, transparent);
-}
-.chat-send-btn {
-  background: linear-gradient(135deg, var(--p), var(--p2));
-  border: none;
-  border-radius: 20px;
-  padding: 10px 18px;
-  font-family: 'Rajdhani', sans-serif;
-  font-weight: 600;
-  font-size: 0.8rem;
-  color: #000;
-  cursor: pointer;
-  transition: var(--transition);
-}
-.chat-send-btn:hover {
-  transform: scale(1.02);
-  box-shadow: var(--glow);
-}
-.file-upload-btn {
-  background: var(--glass);
-  border: 1px solid var(--glass-b);
-  border-radius: 20px;
-  padding: 10px 18px;
-  font-family: 'Rajdhani', sans-serif;
-  font-weight: 600;
-  font-size: 0.8rem;
-  color: var(--p);
-  cursor: pointer;
-  transition: var(--transition);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.file-upload-btn:hover {
-  background: var(--bg3);
-  border-color: var(--p);
-  transform: scale(1.02);
-}
-.file-upload-input {
-  display: none;
-}
-.file-analysis-preview {
-  background: rgba(0,0,0,0.3);
-  border-radius: 12px;
-  padding: 10px;
-  margin-top: 8px;
-  font-size: 0.7rem;
-  color: var(--dim);
-  border-left: 2px solid var(--p);
-}
-
-/* Botón de sincronización manual */
-.sync-btn {
-  background: var(--glass);
-  border: 1px solid var(--glass-b);
-  border-radius: 20px;
-  padding: 4px 12px;
-  color: var(--p);
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 0.6rem;
-  cursor: pointer;
-  transition: var(--transition);
-}
-.sync-btn:hover {
-  background: var(--bg3);
-  border-color: var(--p);
-}
-
-/* ===== ESTILOS PARA ESTADOS DEL MICRÓFONO (MEJORA 3) ===== */
+/* ===== ESTILOS PARA ESTADOS DEL MICRÓFONO ===== */
 .mic-idle #voiceCircle {
   border-color: var(--p) !important;
   box-shadow: 0 0 20px rgba(0,229,255,0.5), 0 0 60px rgba(0,136,255,0.2) !important;
@@ -984,6 +885,15 @@ body::after {
   animation: none !important;
 }
 .mic-speaking #micIcon {
+  color: #ff4466 !important;
+}
+/* Destello rojo (flash) */
+.mic-flash #voiceCircle {
+  border-color: #ff4466 !important;
+  box-shadow: 0 0 40px rgba(255,68,102,0.9), 0 0 120px rgba(255,68,102,0.4) !important;
+  animation: none !important;
+}
+.mic-flash #micIcon {
   color: #ff4466 !important;
 }
 </style>
@@ -1044,16 +954,7 @@ body::after {
         <div id="typingIndicator" class="msg jarvis"><div class="msg-avatar">⚡</div><div class="msg-body"><div class="msg-label">J.A.R.V.I.S</div><div class="msg-text" style="display:flex;align-items:center;gap:4px;"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></div></div></div>
       </div>
       
-      <!-- NUEVO: CHAT DE TEXTO Y SUBIDA DE ARCHIVOS -->
-      <div class="chat-input-container">
-        <div class="chat-input-row">
-          <input type="text" id="textChatInput" class="chat-input-field" placeholder="Escribe un mensaje para J.A.R.V.I.S..." onkeypress="if(event.key==='Enter') sendTextMessage()">
-          <button class="chat-send-btn" onclick="sendTextMessage()">📤 ENVIAR</button>
-          <button class="file-upload-btn" onclick="document.getElementById('fileUploadInput').click()">📎 CARGAR ARCHIVO</button>
-          <input type="file" id="fileUploadInput" class="file-upload-input" accept=".txt,.json,.csv,.html,.xml,.js,.css,.log,.md" onchange="analyzeFile(this)">
-        </div>
-        <div id="fileAnalysisPreview" class="file-analysis-preview" style="display: none;"></div>
-      </div>
+      <!-- Área de chat de texto ELIMINADA (ya no se usa) -->
       
       <div id="apiStatus">🔌 Verificando conexión con Groq...</div>
     </div>
@@ -1206,7 +1107,6 @@ const firebaseConfig = {
   appId: "1:999973684557:web:5f281b96713863ef53a304"
 };
 
-// Inicializar Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
@@ -1270,23 +1170,38 @@ let isProcessing = false;
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-70b-8192'];
 
-// ===== VARIABLES PARA LA WAKE WORD (MEJORA 2) =====
+// ===== VARIABLES PARA LA WAKE WORD =====
 let waitingForWake = true;
 let isActivated = false;
 const WAKE_WORD = 'jarvis';
 
-// ===== FUNCIÓN PARA CAMBIAR ESTADO DEL MICRÓFONO (MEJORA 3) =====
+// ===== FUNCIÓN PARA CAMBIAR ESTADO DEL MICRÓFONO =====
 function setMicState(state) {
   const circle = document.getElementById('voiceCircle');
   if (!circle) return;
-  circle.classList.remove('mic-idle', 'mic-listening', 'mic-speaking');
+  circle.classList.remove('mic-idle', 'mic-listening', 'mic-speaking', 'mic-flash');
   circle.classList.add('mic-' + state);
   const label = document.getElementById('voiceLabel');
   if (label) {
     if (state === 'listening') label.textContent = 'ESCUCHANDO';
     else if (state === 'speaking') label.textContent = 'HABLANDO';
+    else if (state === 'flash') label.textContent = 'NO ENTENDIDO';
     else label.textContent = 'STANDBY';
   }
+}
+
+// ===== DESTELLO ROJO (flash) =====
+function flashMicRed() {
+  if (isSpeaking) return; // No interrumpir si JARVIS está hablando
+  setMicState('flash');
+  setTimeout(() => {
+    // Volver a idle o listening según el estado del reconocimiento
+    if (recognition && sessionActive) {
+      setMicState('listening');
+    } else {
+      setMicState('idle');
+    }
+  }, 800);
 }
 
 // ========== FUNCIONES DE SINCRONIZACIÓN CON FIREBASE ==========
@@ -1385,69 +1300,6 @@ async function loadDataFromFirebase() {
   }
 }
 
-// ========== NUEVAS FUNCIONES: CHAT DE TEXTO Y ANÁLISIS DE ARCHIVOS ==========
-function sendTextMessage() {
-  const input = document.getElementById('textChatInput');
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = '';
-  addMsg('user', text);
-  if (sessionActive) {
-    processCommand(text);
-  } else {
-    speak('El sistema no está activo. Inicie JARVIS primero.');
-  }
-}
-
-function analyzeFile(inputElement) {
-  const file = inputElement.files[0];
-  if (!file) return;
-  
-  const previewDiv = document.getElementById('fileAnalysisPreview');
-  const reader = new FileReader();
-  
-  reader.onload = function(e) {
-    const content = e.target.result;
-    const fileType = file.type || file.name.split('.').pop();
-    const fileSize = (file.size / 1024).toFixed(2);
-    let analysis = `📄 **Archivo:** ${file.name}\n📏 **Tamaño:** ${fileSize} KB\n📑 **Tipo:** ${fileType}\n\n`;
-    
-    if (file.name.endsWith('.json')) {
-      try {
-        const jsonData = JSON.parse(content);
-        analysis += `🔍 **Estructura JSON:**\n${JSON.stringify(jsonData, null, 2).substring(0, 1000)}${JSON.stringify(jsonData, null, 2).length > 1000 ? '...' : ''}`;
-      } catch(e) {
-        analysis += `⚠️ **Error al parsear JSON:** ${e.message}`;
-      }
-    } 
-    else if (file.name.endsWith('.csv')) {
-      const lines = content.split('\n').slice(0, 10);
-      analysis += `📊 **Vista previa CSV (primeras 10 líneas):**\n${lines.join('\n').substring(0, 1500)}`;
-    }
-    else if (file.name.match(/\.(txt|md|log)$/i)) {
-      analysis += `📝 **Contenido del texto:**\n${content.substring(0, 1500)}${content.length > 1500 ? '...' : ''}`;
-    }
-    else if (file.name.match(/\.(html|xml|js|css)$/i)) {
-      analysis += `💻 **Código fuente:**\n${content.substring(0, 1500)}${content.length > 1500 ? '...' : ''}`;
-    }
-    else {
-      analysis += `📋 **Contenido del archivo:**\n${content.substring(0, 1500)}${content.length > 1500 ? '...' : ''}`;
-    }
-    
-    previewDiv.style.display = 'block';
-    previewDiv.innerHTML = `<strong>📎 ANÁLISIS DE ARCHIVO</strong><br>${analysis.replace(/\n/g, '<br>')}`;
-    
-    addMsg('jarvis', `📎 He analizado el archivo "${file.name}" (${fileSize} KB).\n\n${analysis.substring(0, 800)}${analysis.length > 800 ? '...' : ''}`);
-    
-    inputElement.value = '';
-    setTimeout(() => {
-      previewDiv.style.display = 'none';
-    }, 30000);
-  };
-  
-  reader.readAsText(file, 'UTF-8');
-}
-
 // ========== EDICIÓN DE NOMBRE DE USUARIO ==========
 function editUserName() {
   let newName = prompt('Ingrese su nombre:', currentUser ? users[currentUser]?.name : '');
@@ -1496,9 +1348,6 @@ function generateDynamicHelp() {
   
   commands.push({ trigger: 'me llamo [nombre] / mi nombre es [nombre]', desc: 'Registra tu nombre en el sistema', example: '"me llamo Tony"', category: '👤 Usuario' });
   commands.push({ trigger: 'cambia mi nombre a [nombre]', desc: 'Cambia tu nombre de usuario registrado', example: '"cambia mi nombre a Stark"', category: '👤 Usuario' });
-  
-  commands.push({ trigger: 'Escribir en el chat', desc: 'Usa el campo de texto para escribir mensajes manualmente', example: 'Escribe "Hola JARVIS" y presiona ENVIAR', category: '💬 Chat de Texto' });
-  commands.push({ trigger: 'Cargar archivo', desc: 'Usa el botón 📎 para subir y analizar archivos (TXT, JSON, CSV, código)', example: 'Carga un archivo .txt o .json para que JARVIS lo analice', category: '💬 Chat de Texto' });
   
   macros.forEach(macro => {
     const triggers = macro.trigger.split(',').map(t => t.trim()).join(' · ');
@@ -1723,7 +1572,7 @@ async function startJarvisSystem() {
   const ok = await initAudio();
   if (!ok) { addMsg('jarvis', '❌ Error al inicializar el micrófono.'); document.getElementById('startOverlay').classList.remove('hide'); return; }
   sessionActive = true;
-  waitingForWake = true;    // Inicializar wake word
+  waitingForWake = true;
   isActivated = false;
   startRecognition();
   document.getElementById('voiceLabel').textContent = 'ACTIVO';
@@ -1765,7 +1614,7 @@ function startVolumeMeter() {
 function duckMic() { if (gainNode && audioCtx && audioCtx.state !== 'closed') gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.1); }
 function unduckMic() { if (gainNode && audioCtx && audioCtx.state !== 'closed') gainNode.gain.linearRampToValueAtTime(1.0, audioCtx.currentTime + 0.1); }
 
-// ========== RECONOCIMIENTO DE VOZ (MEJORADO CON ESTADO DEL MIC) ==========
+// ========== RECONOCIMIENTO DE VOZ (CON ESTADO DEL MIC) ==========
 function startRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) { addMsg('jarvis', '⚠️ Tu navegador no soporta reconocimiento de voz.'); return; }
@@ -1778,7 +1627,6 @@ function startRecognition() {
     document.getElementById('micDot').className = 'dot green';
     document.getElementById('micDot2').className = 'dot green';
     document.getElementById('voiceLabel').textContent = 'ESCUCHANDO';
-    // Estado verde
     if (!isSpeaking) setMicState('listening');
   };
   recognition.onend = () => {
@@ -1796,7 +1644,6 @@ function startRecognition() {
     } else if (!sessionActive) {
       document.getElementById('voiceLabel').textContent = 'STANDBY';
     }
-    // Estado idle (si no está hablando)
     if (!isSpeaking) setMicState('idle');
   };
   recognition.onerror = (e) => { if (e.error === 'no-speech') return; if (sessionActive && isMicReady) setTimeout(() => { try { recognition.start(); } catch(e) {} }, 1000); };
@@ -1809,7 +1656,7 @@ function startRecognition() {
   try { recognition.start(); } catch(e) { console.warn(e); }
 }
 
-// ========== SÍNTESIS DE VOZ (MEJORADA CON ESTADO ROJO) ==========
+// ========== SÍNTESIS DE VOZ (CON ESTADO ROJO) ==========
 function speak(text) {
   if (!text) return;
   if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -1819,7 +1666,7 @@ function speak(text) {
   }
   isSpeaking = true;
   isSpeakingRecognition = true;
-  setMicState('speaking');  // Rojo
+  setMicState('speaking');
 
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = cfg.lang;
@@ -1841,7 +1688,7 @@ function speak(text) {
           }, 1000);
         }
       }
-      setMicState('idle');  // Vuelve a azul/idle
+      setMicState('idle');
     }, 2000);
   };
   utterance.onend = finishSpeaking;
@@ -2106,12 +1953,11 @@ function parseBuiltIn(text) {
 function matchMacro(text) { const lower=text.toLowerCase(); for(const m of macros){ const triggers=m.trigger.split(',').map(t=>t.trim().toLowerCase()); if(triggers.some(t=>lower.includes(t))) return m; } return null; }
 function executeMacro(m,text){ let spoken=m.speak; if(spoken==='_TIME_') spoken=`Son las ${new Date().toLocaleTimeString('es-ES')}.`; if(m.type==='url') window.open(m.action,'_blank'); if(m.type==='search') window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(m.action||text)}`,'_blank'); if(spoken) speak(spoken); return true; }
 
-// ========== MODALES (MEJORADO CON BUSCADOR EN MACROS) ==========
+// ========== MODALES (CON BUSCADOR EN MACROS) ==========
 function openModal(id){
   document.getElementById(id).classList.add('show');
   if(id==='settingsModal') populateSettings();
   if(id==='macrosModal') {
-    // Inyectar buscador si no existe
     let searchBox = document.getElementById('macroSearchBox');
     const modalContent = document.querySelector('#macrosModal .modal');
     if (!searchBox) {
@@ -2136,7 +1982,6 @@ function openModal(id){
         list.parentNode.insertBefore(searchBox, list);
       }
     }
-    // Ajustar ancho del modal
     if (modalContent) {
       modalContent.style.width = 'fit-content';
       modalContent.style.maxWidth = '95%';
@@ -2169,10 +2014,8 @@ function renderMacroList(){
   if (!list) return;
   const searchTerm = (document.getElementById('macroSearchBox')?.value || '').toLowerCase().trim();
   
-  // Ordenar alfabéticamente por nombre (o trigger)
   let sorted = [...macros].sort((a, b) => (a.name || a.trigger).localeCompare(b.name || b.trigger));
   
-  // Filtrar
   if (searchTerm) {
     sorted = sorted.filter(m => 
       (m.name || '').toLowerCase().includes(searchTerm) ||
@@ -2215,7 +2058,7 @@ function addMsg(role,text){ const conv=document.getElementById('conversation'); 
 function userName(){ return currentUser?(users[currentUser]?.name||'TÚ').toUpperCase():'TÚ'; }
 function greet(){ const part = new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches'); const name = currentUser ? users[currentUser].name : ''; speak(name ? `${part}, ${name}. Soy JARVIS. Sistema listo.` : `${part}. Soy JARVIS. Sistema listo.`); }
 
-// ========== PROCESAMIENTO DE COMANDOS (CON WAKE WORD) ==========
+// ========== PROCESAMIENTO DE COMANDOS (CON WAKE WORD Y FLASH) ==========
 async function processCommand(text) {
   if (!text || isProcessing) return;
   const trimmed = text.trim();
@@ -2226,11 +2069,11 @@ async function processCommand(text) {
     const lower = trimmed.toLowerCase();
     const idx = lower.indexOf(WAKE_WORD);
     if (idx === -1) {
-      // No contiene "jarvis": ignorar (pero mostrar en chat)
-      addMsg('user', trimmed);
-      return;
+      // No contiene "jarvis": ignorar, pero mostrar flash rojo
+      flashMicRed();
+      return;  // No se agrega mensaje al chat
     }
-    // Contiene "jarvis"
+    // Contiene "jarvis": mostrar el mensaje y procesar
     addMsg('user', trimmed);
     let rest = trimmed.substring(idx + WAKE_WORD.length).trim();
     rest = rest.replace(/^[,;:.\s]+/, '');
@@ -2364,7 +2207,6 @@ document.getElementById('startBtn').onclick = async () => {
   if (hasPermission) { await startJarvisSystem(); } else { showMicPermissionDialog(); }
 };
 
-// Iniciar la aplicación
 initApp();
 
 setInterval(() => { document.getElementById('timeDisplay').textContent = new Date().toLocaleTimeString('es-ES'); resetDailyAlerts(); }, 1000);
