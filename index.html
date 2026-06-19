@@ -961,6 +961,31 @@ body::after {
   background: var(--bg3);
   border-color: var(--p);
 }
+
+/* ===== ESTILOS PARA ESTADOS DEL MICRÓFONO (MEJORA 3) ===== */
+.mic-idle #voiceCircle {
+  border-color: var(--p) !important;
+  box-shadow: 0 0 20px rgba(0,229,255,0.5), 0 0 60px rgba(0,136,255,0.2) !important;
+}
+.mic-idle #micIcon {
+  color: var(--p) !important;
+}
+.mic-listening #voiceCircle {
+  border-color: #00ff88 !important;
+  box-shadow: 0 0 25px rgba(0,255,136,0.8), 0 0 80px rgba(0,255,136,0.3) !important;
+  animation: none !important;
+}
+.mic-listening #micIcon {
+  color: #00ff88 !important;
+}
+.mic-speaking #voiceCircle {
+  border-color: #ff4466 !important;
+  box-shadow: 0 0 25px rgba(255,68,102,0.8), 0 0 80px rgba(255,68,102,0.3) !important;
+  animation: none !important;
+}
+.mic-speaking #micIcon {
+  color: #ff4466 !important;
+}
 </style>
 </head>
 <body>
@@ -1245,6 +1270,25 @@ let isProcessing = false;
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-70b-8192'];
 
+// ===== VARIABLES PARA LA WAKE WORD (MEJORA 2) =====
+let waitingForWake = true;
+let isActivated = false;
+const WAKE_WORD = 'jarvis';
+
+// ===== FUNCIÓN PARA CAMBIAR ESTADO DEL MICRÓFONO (MEJORA 3) =====
+function setMicState(state) {
+  const circle = document.getElementById('voiceCircle');
+  if (!circle) return;
+  circle.classList.remove('mic-idle', 'mic-listening', 'mic-speaking');
+  circle.classList.add('mic-' + state);
+  const label = document.getElementById('voiceLabel');
+  if (label) {
+    if (state === 'listening') label.textContent = 'ESCUCHANDO';
+    else if (state === 'speaking') label.textContent = 'HABLANDO';
+    else label.textContent = 'STANDBY';
+  }
+}
+
 // ========== FUNCIONES DE SINCRONIZACIÓN CON FIREBASE ==========
 async function syncDataToFirebase() {
   const bridgeLabel = document.getElementById('bridgeLabel');
@@ -1260,7 +1304,7 @@ async function syncDataToFirebase() {
       workConfig: workConfig,
       knowledgeDB: knowledgeDB,
       calendarEvents: calendarEvents,
-      currentUser: currentUser,    // 👈 Guardamos el usuario activo
+      currentUser: currentUser,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     await db.collection('users').doc('jarvis_data').set(data, { merge: true });
@@ -1289,12 +1333,10 @@ async function loadDataFromFirebase() {
       if (data.knowledgeDB) knowledgeDB = data.knowledgeDB;
       if (data.calendarEvents && data.calendarEvents.length > 0) calendarEvents = data.calendarEvents;
       
-      // 👇 Restaurar currentUser desde Firebase
       if (data.currentUser && users[data.currentUser]) {
         currentUser = data.currentUser;
         localStorage.setItem('jarvis_current_user', currentUser);
       } else {
-        // Si no hay usuario activo válido, buscar el primero registrado
         const userKeys = Object.keys(users);
         if (userKeys.length > 0) {
           currentUser = userKeys[0];
@@ -1305,15 +1347,13 @@ async function loadDataFromFirebase() {
         }
       }
       
-      // Aplicar configuración y actualizar interfaz
       applyFontSettings();
       setTheme(cfg.theme);
-      updateUserBadge();   // 👈 Actualiza la etiqueta con el nombre
+      updateUserBadge();
       renderTasks();
       renderResponsesLog();
       renderCalendar();
       
-      // Guardar en localStorage como respaldo
       localStorage.setItem('jarvis_cfg', JSON.stringify(cfg));
       localStorage.setItem('jarvis_macros', JSON.stringify(macros));
       localStorage.setItem('jarvis_users', JSON.stringify(users));
@@ -1330,7 +1370,6 @@ async function loadDataFromFirebase() {
       console.log('ℹ️ No hay datos en Firebase, usando localStorage');
       document.getElementById('bridgeLabel').textContent = 'LOCAL';
       document.getElementById('bridgeDot').className = 'dot yellow';
-      // Si no hay datos en Firebase, intentar restaurar currentUser desde localStorage
       const storedUser = localStorage.getItem('jarvis_current_user');
       if (storedUser && users[storedUser]) {
         currentUser = storedUser;
@@ -1373,7 +1412,6 @@ function analyzeFile(inputElement) {
     const fileSize = (file.size / 1024).toFixed(2);
     let analysis = `📄 **Archivo:** ${file.name}\n📏 **Tamaño:** ${fileSize} KB\n📑 **Tipo:** ${fileType}\n\n`;
     
-    // Analizar según el tipo
     if (file.name.endsWith('.json')) {
       try {
         const jsonData = JSON.parse(content);
@@ -1399,13 +1437,9 @@ function analyzeFile(inputElement) {
     previewDiv.style.display = 'block';
     previewDiv.innerHTML = `<strong>📎 ANÁLISIS DE ARCHIVO</strong><br>${analysis.replace(/\n/g, '<br>')}`;
     
-    // Mostrar también en el chat
     addMsg('jarvis', `📎 He analizado el archivo "${file.name}" (${fileSize} KB).\n\n${analysis.substring(0, 800)}${analysis.length > 800 ? '...' : ''}`);
     
-    // Limpiar el input para permitir cargar otro archivo
     inputElement.value = '';
-    
-    // Ocultar preview después de 30 segundos
     setTimeout(() => {
       previewDiv.style.display = 'none';
     }, 30000);
@@ -1414,17 +1448,15 @@ function analyzeFile(inputElement) {
   reader.readAsText(file, 'UTF-8');
 }
 
-// ========== EDICIÓN DE NOMBRE DE USUARIO (MEJORADA) ==========
+// ========== EDICIÓN DE NOMBRE DE USUARIO ==========
 function editUserName() {
   let newName = prompt('Ingrese su nombre:', currentUser ? users[currentUser]?.name : '');
   if (newName && newName.trim()) {
     const trimmed = newName.trim();
     if (currentUser) {
-      // Ya hay usuario: actualizar nombre
       const oldName = users[currentUser].name;
       const newId = trimmed.toLowerCase();
       if (currentUser !== newId) {
-        // Cambiar ID si es diferente
         users[newId] = { ...users[currentUser], name: trimmed };
         delete users[currentUser];
         currentUser = newId;
@@ -1435,47 +1467,39 @@ function editUserName() {
       updateUserBadge();
       speak(`He cambiado su nombre de ${oldName} a ${trimmed}.`);
     } else {
-      // No hay usuario: registrar uno nuevo
       registerUser(trimmed);
       speak(`Encantado, ${trimmed}.`);
     }
   }
 }
 
-// ========== FUNCIONES DE AYUDA DINÁMICA MEJORADA ==========
+// ========== FUNCIONES DE AYUDA DINÁMICA ==========
 function generateDynamicHelp() {
   const commands = [];
   
-  // Comandos de calendario con ejemplos
   commands.push({ trigger: 'abrir calendario', desc: 'Abre el calendario interactivo para gestionar eventos', example: '"abrir calendario"', category: '📅 Calendario' });
   commands.push({ trigger: 'agendar [evento] para el [día] de [mes]', desc: 'Agenda un evento en una fecha específica', example: '"agendar reunión con cliente para el 15 de diciembre"', category: '📅 Calendario' });
   commands.push({ trigger: 'agendar [evento] para [YYYY-MM-DD]', desc: 'Agenda un evento con formato de fecha estándar', example: '"agendar cita médica para 2025-01-20"', category: '📅 Calendario' });
   
-  // Comandos de lectura web
   commands.push({ trigger: 'leer página / leer esta página', desc: 'Lee todo el contenido visible de la página actual', example: '"leer página"', category: '📖 Lectura Web' });
   commands.push({ trigger: 'leer encabezados / qué dice la página', desc: 'Lee solo los títulos principales (H1, H2, H3)', example: '"leer encabezados"', category: '📖 Lectura Web' });
   
-  // Comandos de navegación
   commands.push({ trigger: 'abrir youtube', desc: 'Abre YouTube en una nueva pestaña', example: '"abrir youtube"', category: '🌐 Navegación' });
   commands.push({ trigger: 'buscar [término]', desc: 'Busca el término en Google', example: '"buscar inteligencia artificial"', category: '🌐 Navegación' });
   commands.push({ trigger: 'buscar en youtube [término]', desc: 'Busca videos en YouTube', example: '"buscar en youtube tutorial de javascript"', category: '🌐 Navegación' });
   commands.push({ trigger: 'reproduce [término] / pon [término]', desc: 'Busca y reproduce música/videos en YouTube', example: '"reproduce música relajante"', category: '🌐 Navegación' });
   
-  // Comandos de información
   commands.push({ trigger: 'qué hora es', desc: 'Muestra la hora actual', example: '"qué hora es"', category: '⏰ Información' });
   commands.push({ trigger: 'qué fecha es', desc: 'Muestra la fecha actual', example: '"qué fecha es"', category: '⏰ Información' });
   commands.push({ trigger: 'recordatorio', desc: 'Anuncia los recordatorios pendientes del día', example: '"recordatorio"', category: '⏰ Información' });
   commands.push({ trigger: 'ayuda', desc: 'Abre esta ventana de ayuda interactiva', example: '"ayuda"', category: '⏰ Información' });
   
-  // Comandos de usuario
   commands.push({ trigger: 'me llamo [nombre] / mi nombre es [nombre]', desc: 'Registra tu nombre en el sistema', example: '"me llamo Tony"', category: '👤 Usuario' });
   commands.push({ trigger: 'cambia mi nombre a [nombre]', desc: 'Cambia tu nombre de usuario registrado', example: '"cambia mi nombre a Stark"', category: '👤 Usuario' });
   
-  // Comandos de chat y archivos
   commands.push({ trigger: 'Escribir en el chat', desc: 'Usa el campo de texto para escribir mensajes manualmente', example: 'Escribe "Hola JARVIS" y presiona ENVIAR', category: '💬 Chat de Texto' });
   commands.push({ trigger: 'Cargar archivo', desc: 'Usa el botón 📎 para subir y analizar archivos (TXT, JSON, CSV, código)', example: 'Carga un archivo .txt o .json para que JARVIS lo analice', category: '💬 Chat de Texto' });
   
-  // Macros personalizadas
   macros.forEach(macro => {
     const triggers = macro.trigger.split(',').map(t => t.trim()).join(' · ');
     let desc = '';
@@ -1485,14 +1509,12 @@ function generateDynamicHelp() {
     commands.push({ trigger: triggers, desc: desc, example: `Di: "${macro.trigger.split(',')[0].trim()}"`, category: '🎯 Macros Personalizadas', isMacro: true });
   });
   
-  // Agrupar por categoría
   const categories = {};
   commands.forEach(cmd => {
     if (!categories[cmd.category]) categories[cmd.category] = [];
     categories[cmd.category].push(cmd);
   });
   
-  // Generar HTML mejorado
   let html = '';
   for (const [category, cmds] of Object.entries(categories)) {
     html += `<div class="help-section"><div class="help-section-title">${category}</div><div class="help-command-list">`;
@@ -1701,6 +1723,8 @@ async function startJarvisSystem() {
   const ok = await initAudio();
   if (!ok) { addMsg('jarvis', '❌ Error al inicializar el micrófono.'); document.getElementById('startOverlay').classList.remove('hide'); return; }
   sessionActive = true;
+  waitingForWake = true;    // Inicializar wake word
+  isActivated = false;
   startRecognition();
   document.getElementById('voiceLabel').textContent = 'ACTIVO';
   document.getElementById('micStatusLabel').textContent = '🎤 SIEMPRE ACTIVO';
@@ -1741,7 +1765,7 @@ function startVolumeMeter() {
 function duckMic() { if (gainNode && audioCtx && audioCtx.state !== 'closed') gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.1); }
 function unduckMic() { if (gainNode && audioCtx && audioCtx.state !== 'closed') gainNode.gain.linearRampToValueAtTime(1.0, audioCtx.currentTime + 0.1); }
 
-// ========== RECONOCIMIENTO DE VOZ ==========
+// ========== RECONOCIMIENTO DE VOZ (MEJORADO CON ESTADO DEL MIC) ==========
 function startRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) { addMsg('jarvis', '⚠️ Tu navegador no soporta reconocimiento de voz.'); return; }
@@ -1750,7 +1774,13 @@ function startRecognition() {
   recognition.lang = cfg.lang;
   recognition.continuous = true;
   recognition.interimResults = false;
-  recognition.onstart = () => { document.getElementById('micDot').className = 'dot green'; document.getElementById('micDot2').className = 'dot green'; document.getElementById('voiceLabel').textContent = 'ESCUCHANDO'; };
+  recognition.onstart = () => {
+    document.getElementById('micDot').className = 'dot green';
+    document.getElementById('micDot2').className = 'dot green';
+    document.getElementById('voiceLabel').textContent = 'ESCUCHANDO';
+    // Estado verde
+    if (!isSpeaking) setMicState('listening');
+  };
   recognition.onend = () => {
     document.getElementById('micDot').className = 'dot yellow';
     document.getElementById('micDot2').className = 'dot yellow';
@@ -1766,6 +1796,8 @@ function startRecognition() {
     } else if (!sessionActive) {
       document.getElementById('voiceLabel').textContent = 'STANDBY';
     }
+    // Estado idle (si no está hablando)
+    if (!isSpeaking) setMicState('idle');
   };
   recognition.onerror = (e) => { if (e.error === 'no-speech') return; if (sessionActive && isMicReady) setTimeout(() => { try { recognition.start(); } catch(e) {} }, 1000); };
   recognition.onresult = (e) => { 
@@ -1777,7 +1809,7 @@ function startRecognition() {
   try { recognition.start(); } catch(e) { console.warn(e); }
 }
 
-// ========== SÍNTESIS DE VOZ ==========
+// ========== SÍNTESIS DE VOZ (MEJORADA CON ESTADO ROJO) ==========
 function speak(text) {
   if (!text) return;
   if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -1787,6 +1819,8 @@ function speak(text) {
   }
   isSpeaking = true;
   isSpeakingRecognition = true;
+  setMicState('speaking');  // Rojo
+
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = cfg.lang;
   utterance.rate = cfg.speed;
@@ -1807,6 +1841,7 @@ function speak(text) {
           }, 1000);
         }
       }
+      setMicState('idle');  // Vuelve a azul/idle
     }, 2000);
   };
   utterance.onend = finishSpeaking;
@@ -1814,7 +1849,13 @@ function speak(text) {
   window.speechSynthesis.speak(utterance);
   addMsg('jarvis', text);
 }
-function stopSpeaking() { if (window.speechSynthesis) window.speechSynthesis.cancel(); isSpeaking = false; unduckMic(); isSpeakingRecognition = false; }
+function stopSpeaking() {
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  isSpeaking = false;
+  unduckMic();
+  isSpeakingRecognition = false;
+  setMicState('idle');
+}
 function getVoice() { const voices = window.speechSynthesis.getVoices(); return voices.find(v => v.lang.startsWith('es')) || null; }
 function loadVoices() {
   const voices = window.speechSynthesis.getVoices();
@@ -2064,8 +2105,49 @@ function parseBuiltIn(text) {
 
 function matchMacro(text) { const lower=text.toLowerCase(); for(const m of macros){ const triggers=m.trigger.split(',').map(t=>t.trim().toLowerCase()); if(triggers.some(t=>lower.includes(t))) return m; } return null; }
 function executeMacro(m,text){ let spoken=m.speak; if(spoken==='_TIME_') spoken=`Son las ${new Date().toLocaleTimeString('es-ES')}.`; if(m.type==='url') window.open(m.action,'_blank'); if(m.type==='search') window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(m.action||text)}`,'_blank'); if(spoken) speak(spoken); return true; }
-function openModal(id){ document.getElementById(id).classList.add('show'); if(id==='settingsModal') populateSettings(); if(id==='macrosModal') renderMacroList(); if(id==='backupModal') refreshExportPreview(); }
+
+// ========== MODALES (MEJORADO CON BUSCADOR EN MACROS) ==========
+function openModal(id){
+  document.getElementById(id).classList.add('show');
+  if(id==='settingsModal') populateSettings();
+  if(id==='macrosModal') {
+    // Inyectar buscador si no existe
+    let searchBox = document.getElementById('macroSearchBox');
+    const modalContent = document.querySelector('#macrosModal .modal');
+    if (!searchBox) {
+      searchBox = document.createElement('input');
+      searchBox.id = 'macroSearchBox';
+      searchBox.placeholder = '🔍 Filtrar macros...';
+      searchBox.style.cssText = `
+        width: 100%;
+        padding: 8px 14px;
+        border-radius: 20px;
+        border: 1px solid var(--glass-b);
+        background: rgba(0,0,0,0.4);
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 0.9rem;
+        outline: none;
+        margin-bottom: 12px;
+      `;
+      searchBox.oninput = () => renderMacroList();
+      const list = document.getElementById('macroList');
+      if (list && list.parentNode) {
+        list.parentNode.insertBefore(searchBox, list);
+      }
+    }
+    // Ajustar ancho del modal
+    if (modalContent) {
+      modalContent.style.width = 'fit-content';
+      modalContent.style.maxWidth = '95%';
+      modalContent.style.minWidth = '320px';
+    }
+    renderMacroList();
+  }
+  if(id==='backupModal') refreshExportPreview();
+}
 function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+
 function populateSettings(){ 
   document.getElementById('cfgGroqKey').value=cfg.groqKey||''; document.getElementById('cfgSpeed').value=cfg.speed; document.getElementById('cfgPitch').value=cfg.pitch; 
   document.getElementById('speedVal').textContent=cfg.speed; document.getElementById('pitchVal').textContent=cfg.pitch; document.getElementById('cfgLang').value=cfg.lang; 
@@ -2080,7 +2162,44 @@ function saveSettings(){
   const vn=document.getElementById('cfgVoice').value; if(vn){ cfg.voiceName=vn; selectedVoice=availableVoices.find(v=>v.name===vn)||null; } 
   if(recognition) recognition.lang=cfg.lang; saveState(); applyFontSettings(); closeModal('settingsModal'); checkGroq(); speak('Configuración guardada.'); 
 }
-function renderMacroList(){ const list=document.getElementById('macroList'); list.innerHTML=macros.length===0?'<p style="text-align:center;padding:20px;">Sin macros</p>':''; macros.forEach(m=>{ const div=document.createElement('div'); div.className='macro-item'; div.innerHTML=`<div><div class="macro-trigger">📢 ${m.trigger.split(',')[0]}</div><div class="macro-action">${m.name}</div></div><span class="macro-type ${m.type}">${m.type.toUpperCase()}</span><div><button onclick="openMacroEditor('${m.id}')">✏️</button><button onclick="deleteMacro('${m.id}')">🗑️</button></div>`; list.appendChild(div); }); }
+
+// ========== MACROS (CON BÚSQUEDA Y ORDEN ALFABÉTICO) ==========
+function renderMacroList(){
+  const list = document.getElementById('macroList');
+  if (!list) return;
+  const searchTerm = (document.getElementById('macroSearchBox')?.value || '').toLowerCase().trim();
+  
+  // Ordenar alfabéticamente por nombre (o trigger)
+  let sorted = [...macros].sort((a, b) => (a.name || a.trigger).localeCompare(b.name || b.trigger));
+  
+  // Filtrar
+  if (searchTerm) {
+    sorted = sorted.filter(m => 
+      (m.name || '').toLowerCase().includes(searchTerm) ||
+      (m.trigger || '').toLowerCase().includes(searchTerm) ||
+      (m.action || '').toLowerCase().includes(searchTerm)
+    );
+  }
+  
+  if (sorted.length === 0) {
+    list.innerHTML = `<p style="text-align:center;padding:20px;color:var(--dim);">${searchTerm ? 'No se encontraron macros' : 'Sin macros'}</p>`;
+    return;
+  }
+  
+  list.innerHTML = sorted.map(m => `
+    <div class="macro-item">
+      <div>
+        <div class="macro-trigger">📢 ${m.trigger.split(',')[0]}</div>
+        <div class="macro-action">${m.name}</div>
+      </div>
+      <span class="macro-type ${m.type}">${m.type.toUpperCase()}</span>
+      <div>
+        <button onclick="openMacroEditor('${m.id}')">✏️</button>
+        <button onclick="deleteMacro('${m.id}')">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+}
 function openMacroEditor(id){ const m=id?macros.find(x=>x.id===id):null; document.getElementById('macroEditorTitle').textContent=m?'✏️ EDITAR':'➕ NUEVO'; document.getElementById('macroEditId').value=m?m.id:''; document.getElementById('macroTrigger').value=m?m.trigger:''; document.getElementById('macroName').value=m?m.name:''; document.getElementById('macroType').value=m?m.type:'url'; document.getElementById('macroAction').value=m?m.action:''; document.getElementById('macroSpeak').value=m?m.speak:''; updateMacroActionLabel(); closeModal('macrosModal'); openModal('macroEditorModal'); }
 function updateMacroActionLabel(){ const labels={url:'URL',search:'TÉRMINO DE BÚSQUEDA',speak:'TEXTO'}; const t=document.getElementById('macroType').value; document.getElementById('macroActionLabel').textContent=labels[t]||'ACCIÓN'; }
 function saveMacro(){ const id=document.getElementById('macroEditId').value; const m={id:id||'m'+Date.now(),name:document.getElementById('macroName').value.trim()||'Sin nombre',trigger:document.getElementById('macroTrigger').value.trim(),type:document.getElementById('macroType').value,action:document.getElementById('macroAction').value.trim(),speak:document.getElementById('macroSpeak').value.trim()}; if(!m.trigger){ alert('Trigger requerido'); return; } if(id){ const idx=macros.findIndex(x=>x.id===id); if(idx>-1) macros[idx]=m; }else macros.push(m); saveState(); closeModal('macroEditorModal'); openModal('macrosModal'); }
@@ -2096,25 +2215,99 @@ function addMsg(role,text){ const conv=document.getElementById('conversation'); 
 function userName(){ return currentUser?(users[currentUser]?.name||'TÚ').toUpperCase():'TÚ'; }
 function greet(){ const part = new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches'); const name = currentUser ? users[currentUser].name : ''; speak(name ? `${part}, ${name}. Soy JARVIS. Sistema listo.` : `${part}. Soy JARVIS. Sistema listo.`); }
 
+// ========== PROCESAMIENTO DE COMANDOS (CON WAKE WORD) ==========
 async function processCommand(text) {
   if (!text || isProcessing) return;
-  isProcessing = true;
+  const trimmed = text.trim();
+  if (!trimmed) return;
+
+  // Lógica de wake word
+  if (waitingForWake) {
+    const lower = trimmed.toLowerCase();
+    const idx = lower.indexOf(WAKE_WORD);
+    if (idx === -1) {
+      // No contiene "jarvis": ignorar (pero mostrar en chat)
+      addMsg('user', trimmed);
+      return;
+    }
+    // Contiene "jarvis"
+    addMsg('user', trimmed);
+    let rest = trimmed.substring(idx + WAKE_WORD.length).trim();
+    rest = rest.replace(/^[,;:.\s]+/, '');
+    if (rest === '') {
+      // Solo dijo "jarvis"
+      speak('¿En qué puedo ayudarle?');
+      waitingForWake = false;
+      isActivated = true;
+      return;
+    } else {
+      waitingForWake = false;
+      isActivated = true;
+      await processActualCommand(rest);
+      waitingForWake = true;
+      isActivated = false;
+      return;
+    }
+  } else {
+    // Ya activado (porque antes se dijo "jarvis")
+    addMsg('user', trimmed);
+    await processActualCommand(trimmed);
+    waitingForWake = true;
+    isActivated = false;
+  }
+}
+
+// Función que contiene la lógica original de procesamiento (sin wake word)
+async function processActualCommand(text) {
   try {
-    if (window.pendingWorkResponse) { processWorkResponse(window.pendingWorkResponse, text); window.pendingWorkResponse = null; isProcessing = false; return; }
-    if (parseAgendarCommand(text)) { isProcessing = false; return; }
+    if (window.pendingWorkResponse) {
+      processWorkResponse(window.pendingWorkResponse, text);
+      window.pendingWorkResponse = null;
+      return;
+    }
+    if (parseAgendarCommand(text)) return;
+
     const userName = currentUser ? users[currentUser].name : 'señor';
     const nameMatch = text.match(/me llamo (\w+)|mi nombre es (\w+)|soy (\w+)/i);
-    if (nameMatch && !currentUser) { const name = (nameMatch[1]||nameMatch[2]||nameMatch[3]); registerUser(name); addMsg('user', text); speak(`Encantado, ${name}.`); isProcessing = false; return; }
-    const changeNameMatch = text.match(/cambia mi nombre a (\w+)|cámbiame el nombre a (\w+)/i);
-    if (changeNameMatch && sessionActive) { const newName = (changeNameMatch[1] || changeNameMatch[2]); if (newName) { if (currentUser) { const oldName = users[currentUser].name; const newId = newName.toLowerCase(); if (currentUser !== newId) { users[newId] = { ...users[currentUser], name: newName }; delete users[currentUser]; currentUser = newId; } else { users[currentUser].name = newName; } saveState(); updateUserBadge(); speak(`He cambiado su nombre de ${oldName} a ${newName}.`); } else { registerUser(newName); } } isProcessing = false; return; }
-    addMsg('user', text);
-    const macro = matchMacro(text); if (macro) { executeMacro(macro, text); isProcessing = false; return; }
-    const built = parseBuiltIn(text); 
-    if (built !== null) { 
-      if (built) speak(built); 
-      isProcessing = false; 
-      return; 
+    if (nameMatch && !currentUser) {
+      const name = (nameMatch[1]||nameMatch[2]||nameMatch[3]);
+      registerUser(name);
+      speak(`Encantado, ${name}.`);
+      return;
     }
+    const changeNameMatch = text.match(/cambia mi nombre a (\w+)|cámbiame el nombre a (\w+)/i);
+    if (changeNameMatch && sessionActive) {
+      const newName = (changeNameMatch[1] || changeNameMatch[2]);
+      if (newName) {
+        if (currentUser) {
+          const oldName = users[currentUser].name;
+          const newId = newName.toLowerCase();
+          if (currentUser !== newId) {
+            users[newId] = { ...users[currentUser], name: newName };
+            delete users[currentUser];
+            currentUser = newId;
+          } else {
+            users[currentUser].name = newName;
+          }
+          saveState();
+          updateUserBadge();
+          speak(`He cambiado su nombre de ${oldName} a ${newName}.`);
+        } else {
+          registerUser(newName);
+        }
+      }
+      return;
+    }
+
+    const macro = matchMacro(text);
+    if (macro) { executeMacro(macro, text); return; }
+
+    const built = parseBuiltIn(text);
+    if (built !== null) {
+      if (built) speak(built);
+      return;
+    }
+
     showTyping(true);
     let resp = await askGroq(text, userName);
     showTyping(false);
@@ -2123,8 +2316,6 @@ async function processCommand(text) {
   } catch(e) {
     console.error(e);
     speak('Ocurrió un error.');
-  } finally {
-    isProcessing = false;
   }
 }
 function showTyping(show){ document.getElementById('typingIndicator').style.display=show?'flex':'none'; }
@@ -2136,23 +2327,19 @@ async function initApp() {
   loadTasks();
   loadCalendarEvents();
   
-  // Intentar cargar desde Firebase (sobrescribe si hay datos más recientes)
   await loadDataFromFirebase();
   
-  // Aplicar configuración y actualizar interfaz
   setTheme(cfg.theme || 'arc-blue');
   applyFontSettings();
-  updateUserBadge();   // 👈 Asegurar que se muestre el nombre
+  updateUserBadge();
   renderTasks();
   renderResponsesLog();
   renderCalendar();
   
-  // Sincronizar periódicamente cada 60 segundos
   setInterval(() => {
     syncDataToFirebase();
   }, 60000);
 
-  // === INICIO AUTOMÁTICO ===
   const hasPermission = localStorage.getItem('jarvis_mic_permission') === 'granted';
   document.getElementById('startOverlay').classList.add('hide');
   if (hasPermission) {
