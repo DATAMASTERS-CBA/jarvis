@@ -1313,21 +1313,14 @@ function generateDynamicHelp() {
   commands.push({ trigger: 'abrir calendario', desc: 'Abre el calendario interactivo para gestionar eventos', example: '"abrir calendario"', category: '📅 Calendario' });
   commands.push({ trigger: 'agendar [evento] para el [día] de [mes]', desc: 'Agenda un evento en una fecha específica', example: '"agendar reunión con cliente para el 15 de diciembre"', category: '📅 Calendario' });
   commands.push({ trigger: 'agendar [evento] para [YYYY-MM-DD]', desc: 'Agenda un evento con formato de fecha estándar', example: '"agendar cita médica para 2025-01-20"', category: '📅 Calendario' });
-  commands.push({ trigger: 'recordatorio [texto]', desc: 'Crea una tarea con el texto dado (sin fecha/hora)', example: '"recordatorio comprar leche"', category: '📋 Tareas' });
-  commands.push({ trigger: 'alarma a las [hora]', desc: 'Crea una tarea para hoy a la hora indicada', example: '"alarma a las 15:30"', category: '📋 Tareas' });
-  commands.push({ trigger: 'crear tarea [título]', desc: 'Crea una tarea con el título dado', example: '"crear tarea Revisar correos"', category: '📋 Tareas' });
   
   commands.push({ trigger: 'leer página / leer esta página', desc: 'Lee todo el contenido visible de la página actual', example: '"leer página"', category: '📖 Lectura Web' });
   commands.push({ trigger: 'leer encabezados / qué dice la página', desc: 'Lee solo los títulos principales (H1, H2, H3)', example: '"leer encabezados"', category: '📖 Lectura Web' });
   
   commands.push({ trigger: 'abrir youtube', desc: 'Abre YouTube en una nueva pestaña', example: '"abrir youtube"', category: '🌐 Navegación' });
-  commands.push({ trigger: 'abrir [sitio]', desc: 'Abre un sitio web (ej: "abrir google", "abrir gmail")', example: '"abrir google"', category: '🌐 Navegación' });
-  commands.push({ trigger: 'buscar en internet [término]', desc: 'Busca el término en Google', example: '"buscar en internet inteligencia artificial"', category: '🌐 Navegación' });
-  commands.push({ trigger: 'buscar [término]', desc: 'Busca el término en Google (atajo)', example: '"buscar recetas"', category: '🌐 Navegación' });
+  commands.push({ trigger: 'buscar [término]', desc: 'Busca el término en Google', example: '"buscar inteligencia artificial"', category: '🌐 Navegación' });
   commands.push({ trigger: 'buscar en youtube [término]', desc: 'Busca videos en YouTube', example: '"buscar en youtube tutorial de javascript"', category: '🌐 Navegación' });
   commands.push({ trigger: 'reproduce [término] / pon [término]', desc: 'Busca y reproduce música/videos en YouTube', example: '"reproduce música relajante"', category: '🌐 Navegación' });
-  commands.push({ trigger: 'qué tiempo hace', desc: 'Abre el sitio del clima', example: '"qué tiempo hace"', category: '🌐 Navegación' });
-  commands.push({ trigger: 'noticias', desc: 'Abre Google Noticias', example: '"noticias"', category: '🌐 Navegación' });
   
   commands.push({ trigger: 'qué hora es', desc: 'Muestra la hora actual', example: '"qué hora es"', category: '⏰ Información' });
   commands.push({ trigger: 'qué fecha es', desc: 'Muestra la fecha actual', example: '"qué fecha es"', category: '⏰ Información' });
@@ -1336,11 +1329,6 @@ function generateDynamicHelp() {
   
   commands.push({ trigger: 'me llamo [nombre] / mi nombre es [nombre]', desc: 'Registra tu nombre en el sistema', example: '"me llamo Tony"', category: '👤 Usuario' });
   commands.push({ trigger: 'cambia mi nombre a [nombre]', desc: 'Cambia tu nombre de usuario registrado', example: '"cambia mi nombre a Stark"', category: '👤 Usuario' });
-  commands.push({ trigger: 'olvidar usuario', desc: 'Olvida al usuario actual', example: '"olvidar usuario"', category: '👤 Usuario' });
-  
-  // Comandos de interrupción
-  commands.push({ trigger: 'jarvis', desc: 'Interrumpe al asistente y queda a la escucha', example: 'decir "jarvis" mientras habla', category: '🎤 Interrupción' });
-  commands.push({ trigger: 'detente / silencio / para / dejar de hablar', desc: 'Detiene la voz del asistente', example: 'decir "detente"', category: '🎤 Interrupción' });
   
   macros.forEach(macro => {
     const triggers = macro.trigger.split(',').map(t => t.trim()).join(' · ');
@@ -1606,7 +1594,7 @@ function startVolumeMeter() {
 function duckMic() { if (gainNode && audioCtx && audioCtx.state !== 'closed') gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.1); }
 function unduckMic() { if (gainNode && audioCtx && audioCtx.state !== 'closed') gainNode.gain.linearRampToValueAtTime(1.0, audioCtx.currentTime + 0.1); }
 
-// ========== RECONOCIMIENTO DE VOZ (CON INTERRUPCIÓN) ==========
+// ========== RECONOCIMIENTO DE VOZ (SIN WAKE WORD) ==========
 function startRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) { addMsg('jarvis', '⚠️ Tu navegador no soporta reconocimiento de voz.'); return; }
@@ -1643,20 +1631,19 @@ function startRecognition() {
     if (isSpeaking || isSpeakingRecognition || isProcessing) return;
     let transcript = ''; 
     for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { transcript = e.results[i][0].transcript; break; } 
-    if (!transcript.trim()) return;
-    // Detectar interrupción (incluso si está hablando, pero lo manejamos en el otro bloque)
-    // Aquí solo procesamos si no está hablando
-    processCommand(transcript.trim()); 
+    if (transcript.trim()) processCommand(transcript.trim()); 
   };
   try { recognition.start(); } catch(e) { console.warn(e); }
 }
 
-// ========== SÍNTESIS DE VOZ (CON INTERRUPCIÓN) ==========
+// ========== SÍNTESIS DE VOZ ==========
 function speak(text) {
   if (!text) return;
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   duckMic();
-  // No detenemos el reconocimiento, sigue activo para interrumpir
+  if (recognition) {
+    try { recognition.stop(); } catch (e) {}
+  }
   isSpeaking = true;
   isSpeakingRecognition = true;
   setMicState('speaking');
@@ -1672,8 +1659,17 @@ function speak(text) {
     setTimeout(() => {
       unduckMic();
       isSpeakingRecognition = false;
-      // El reconocimiento ya está activo, no lo reiniciamos
-      if (!isSpeaking) setMicState('listening');
+      if (sessionActive && isMicReady && recognition) {
+        try { recognition.start(); } catch (e) {
+          setTimeout(() => {
+            if (sessionActive && isMicReady && recognition) {
+              try { recognition.start(); } catch (e) {}
+            }
+          }, 1000);
+        }
+      }
+      // Siempre volver a estado de escucha
+      setMicState('listening');
     }, 2000);
   };
   utterance.onend = finishSpeaking;
@@ -1681,16 +1677,13 @@ function speak(text) {
   window.speechSynthesis.speak(utterance);
   addMsg('jarvis', text);
 }
-
 function stopSpeaking() {
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   isSpeaking = false;
   unduckMic();
   isSpeakingRecognition = false;
   setMicState('listening');
-  // Reconocimiento ya está activo
 }
-
 function getVoice() { const voices = window.speechSynthesis.getVoices(); return voices.find(v => v.lang.startsWith('es')) || null; }
 function loadVoices() {
   const voices = window.speechSynthesis.getVoices();
@@ -1700,146 +1693,6 @@ function loadVoices() {
   availableVoices.forEach(v => { const opt = document.createElement('option'); opt.value = v.name; opt.textContent = `${v.name} (${v.lang})`; if (v.name === cfg.voiceName) opt.selected = true; sel.appendChild(opt); });
 }
 if (window.speechSynthesis) { window.speechSynthesis.onvoiceschanged = loadVoices; loadVoices(); }
-
-// ========== PROCESAMIENTO DE COMANDOS (CON DETECCIÓN DE INTERRUPCIÓN) ==========
-async function processCommand(text) {
-  if (!text || isProcessing) return;
-  const trimmed = text.trim().toLowerCase();
-  if (!trimmed) return;
-
-  // Si estamos hablando, comprobar si es una orden de interrupción
-  if (isSpeaking) {
-    const interruptWords = ['jarvis', 'detente', 'silencio', 'para', 'dejar de hablar', 'stop'];
-    if (interruptWords.some(word => trimmed.includes(word))) {
-      stopSpeaking();
-      // No añadimos mensaje de usuario para no saturar
-      return;
-    }
-    // Si no es interrupción, ignoramos mientras habla (para evitar eco)
-    return;
-  }
-
-  // Si no está hablando, procesamos normalmente
-  addMsg('user', trimmed);
-
-  try {
-    if (window.pendingWorkResponse) {
-      processWorkResponse(window.pendingWorkResponse, trimmed);
-      window.pendingWorkResponse = null;
-      return;
-    }
-    if (parseAgendarCommand(trimmed)) return;
-
-    // Nuevos comandos: recordatorio, alarma, crear tarea, abrir sitio, noticias, clima
-    if (trimmed.startsWith('recordatorio ')) {
-      const title = trimmed.substring(12).trim();
-      if (title) {
-        tasks.unshift({ id: Date.now().toString(), title: title, description: '', priority: 'normal', date: null, time: null, completed: false, completedAt: null, reminderSent: false });
-        saveTasks(); renderTasks();
-        speak(`Recordatorio "${title}" agregado.`);
-        return;
-      }
-    }
-    if (trimmed.startsWith('alarma a las ')) {
-      const timeStr = trimmed.substring(13).trim();
-      if (timeStr.match(/^\d{1,2}:\d{2}$/)) {
-        const today = new Date();
-        const dateStr = today.toISOString().split('T')[0];
-        tasks.unshift({ id: Date.now().toString(), title: `Alarma a las ${timeStr}`, description: '', priority: 'normal', date: dateStr, time: timeStr, completed: false, completedAt: null, reminderSent: false });
-        saveTasks(); renderTasks();
-        speak(`Alarma configurada para hoy a las ${timeStr}.`);
-        return;
-      } else {
-        speak('Formato de hora incorrecto. Use por ejemplo "alarma a las 15:30".');
-        return;
-      }
-    }
-    if (trimmed.startsWith('crear tarea ') || trimmed.startsWith('nueva tarea ')) {
-      const title = trimmed.replace(/^crear tarea |^nueva tarea /, '').trim();
-      if (title) {
-        tasks.unshift({ id: Date.now().toString(), title: title, description: '', priority: 'normal', date: null, time: null, completed: false, completedAt: null, reminderSent: false });
-        saveTasks(); renderTasks();
-        speak(`Tarea "${title}" creada.`);
-        return;
-      }
-    }
-    if (trimmed === 'noticias') {
-      window.open('https://news.google.com', '_blank');
-      speak('Abriendo noticias.');
-      return;
-    }
-    if (trimmed === 'qué tiempo hace' || trimmed === 'clima') {
-      window.open(cfg.weatherUrl || DEFAULT_CONFIG.weatherUrl, '_blank');
-      speak('Abriendo el clima.');
-      return;
-    }
-    // Abrir sitio: "abrir [sitio]" (si no es youtube o google que ya están en macros)
-    if (trimmed.startsWith('abrir ') && !trimmed.startsWith('abrir youtube') && !trimmed.startsWith('abrir google')) {
-      const site = trimmed.substring(6).trim();
-      if (site) {
-        const url = site.includes('.') ? `https://${site}` : `https://${site}.com`;
-        window.open(url, '_blank');
-        speak(`Abriendo ${site}.`);
-        return;
-      }
-    }
-
-    const userName = currentUser ? users[currentUser].name : 'señor';
-    const nameMatch = trimmed.match(/me llamo (\w+)|mi nombre es (\w+)|soy (\w+)/i);
-    if (nameMatch && !currentUser) {
-      const name = (nameMatch[1]||nameMatch[2]||nameMatch[3]);
-      registerUser(name);
-      speak(`Encantado, ${name}.`);
-      return;
-    }
-    const changeNameMatch = trimmed.match(/cambia mi nombre a (\w+)|cámbiame el nombre a (\w+)/i);
-    if (changeNameMatch && sessionActive) {
-      const newName = (changeNameMatch[1] || changeNameMatch[2]);
-      if (newName) {
-        if (currentUser) {
-          const oldName = users[currentUser].name;
-          const newId = newName.toLowerCase();
-          if (currentUser !== newId) {
-            users[newId] = { ...users[currentUser], name: newName };
-            delete users[currentUser];
-            currentUser = newId;
-          } else {
-            users[currentUser].name = newName;
-          }
-          saveState();
-          updateUserBadge();
-          speak(`He cambiado su nombre de ${oldName} a ${newName}.`);
-        } else {
-          registerUser(newName);
-        }
-      }
-      return;
-    }
-    if (trimmed.includes('olvidar usuario')) {
-      forgetUser();
-      return;
-    }
-
-    const macro = matchMacro(trimmed);
-    if (macro) { executeMacro(macro, trimmed); return; }
-
-    const built = parseBuiltIn(trimmed);
-    if (built !== null) {
-      if (built) speak(built);
-      return;
-    }
-
-    showTyping(true);
-    let resp = await askGroq(trimmed, userName);
-    showTyping(false);
-    if (!resp) resp = `Entendido, ${userName}. No puedo procesar eso.`;
-    speak(resp);
-  } catch(e) {
-    console.error(e);
-    speak('Ocurrió un error.');
-  }
-}
-function showTyping(show){ document.getElementById('typingIndicator').style.display=show?'flex':'none'; }
 
 // ========== GROQ API ==========
 async function checkGroq() {
@@ -1973,27 +1826,32 @@ function saveTasks() {
   syncDataToFirebase().catch(e => console.warn('Sync falló, pero datos locales guardados:', e));
 }
 
-// ========== ORDENAR Y RENDERIZAR TAREAS ==========
+// ========== NUEVA FUNCIÓN: ORDENAR Y RENDERIZAR TAREAS ==========
 function renderTasks() {
   const container = document.getElementById('taskList');
   if (!container) return;
 
+  // Filtrar por estado (pendiente/completada)
   let filtered = tasks.filter(t => t.completed === (tasksFilter === 'completed'));
 
+  // Función para obtener timestamp de una tarea (fecha + hora)
   function getTaskTimestamp(task) {
-    if (!task.date) return Number.MAX_SAFE_INTEGER;
+    if (!task.date) return Number.MAX_SAFE_INTEGER; // sin fecha -> al final
     const parts = task.date.split('-').map(Number);
     const timeParts = task.time ? task.time.split(':').map(Number) : [0, 0];
     return new Date(parts[0], parts[1]-1, parts[2], timeParts[0] || 0, timeParts[1] || 0).getTime();
   }
 
+  // Ordenar: más cercano a la fecha/hora actual primero
   const now = Date.now();
   filtered.sort((a, b) => {
     const ta = getTaskTimestamp(a);
     const tb = getTaskTimestamp(b);
+    // Si ambas tienen fecha, comparar distancia a ahora
     if (ta !== Number.MAX_SAFE_INTEGER && tb !== Number.MAX_SAFE_INTEGER) {
       return Math.abs(ta - now) - Math.abs(tb - now);
     }
+    // Si una no tiene fecha, va al final
     if (ta === Number.MAX_SAFE_INTEGER) return 1;
     if (tb === Number.MAX_SAFE_INTEGER) return -1;
     return ta - tb;
@@ -2021,7 +1879,7 @@ function renderTasks() {
   `).join('');
 }
 
-// ========== LEER TAREA ==========
+// ========== NUEVA FUNCIÓN: LEER TAREA ==========
 function readTask(taskId) {
   const task = tasks.find(t => t.id == taskId);
   if (!task) return;
@@ -2029,22 +1887,25 @@ function readTask(taskId) {
   let msg = `Tarea: ${task.title}.`;
   if (task.description) msg += ` Descripción: ${task.description}.`;
 
+  // Fecha y hora
   if (task.date) {
     const parts = task.date.split('-');
     const year = parseInt(parts[0]);
     const month = parseInt(parts[1]) - 1;
     const day = parseInt(parts[2]);
+    const dateObj = new Date(year, month, day);
     const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
     msg += ` Para el ${day} de ${monthNames[month]}.`;
   }
   if (task.time) {
+    // La hora ya viene en formato HH:MM (sin segundos)
     msg += ` A las ${task.time}.`;
   }
 
   speak(msg);
 }
 
-// ========== RESTO DE FUNCIONES DE TAREAS ==========
+// ========== RESTO DE FUNCIONES DE TAREAS (ADD, TOGGLE, EDIT, DELETE, CLEAR) ==========
 function addTask() {
   const title = document.getElementById('taskTitle').value.trim();
   if (!title) { speak('Escriba un título.'); return; }
@@ -2126,7 +1987,6 @@ function parseBuiltIn(text) {
   if (l.includes('leer encabezados') || l.includes('qué dice la página')) { simulatePageRead('headings'); return ''; }
   if(l.includes('abrir calendario')){ openCalendarModal(); return 'Abriendo calendario.'; }
   if(l.includes('abrir youtube')){ window.open('https://www.youtube.com','_blank'); return 'Abriendo YouTube.'; }
-  if(l.match(/buscar en internet\s+(.+)/i)){ const q=l.match(/buscar en internet\s+(.+)/i)[1]; window.open(`https://www.google.com/search?q=${encodeURIComponent(q)}`,'_blank'); return `Buscando "${q}" en Internet.`; }
   if(l.match(/buscar\s+(.+)/i) && !l.includes('youtube')){ const q=l.match(/buscar\s+(.+)/i)[1]; window.open(`https://www.google.com/search?q=${encodeURIComponent(q)}`,'_blank'); return `Buscando "${q}" en Google.`; }
   if(l.match(/buscar en youtube\s+(.+)/i) || l.match(/reproduce\s+(.+)/i) || l.match(/pon\s+(.+)/i)){
     let q = ''; 
@@ -2137,7 +1997,7 @@ function parseBuiltIn(text) {
   }
   if(l.includes('qué hora es')) return `Son las ${new Date().toLocaleTimeString('es-ES')}.`;
   if(l.includes('qué fecha es')) return `Hoy es ${new Date().toLocaleDateString('es-ES')}.`;
-  if(l.includes('recordatorio') && !l.startsWith('recordatorio ')) { 
+  if(l.includes('recordatorio') || l.includes('recordatorios')) { 
     checkAndAnnounceReminders(); 
     return ''; 
   }
@@ -2148,7 +2008,7 @@ function parseBuiltIn(text) {
 function matchMacro(text) { const lower=text.toLowerCase(); for(const m of macros){ const triggers=m.trigger.split(',').map(t=>t.trim().toLowerCase()); if(triggers.some(t=>lower.includes(t))) return m; } return null; }
 function executeMacro(m,text){ let spoken=m.speak; if(spoken==='_TIME_') spoken=`Son las ${new Date().toLocaleTimeString('es-ES')}.`; if(m.type==='url') window.open(m.action,'_blank'); if(m.type==='search') window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(m.action||text)}`,'_blank'); if(spoken) speak(spoken); return true; }
 
-// ========== MODALES ==========
+// ========== MODALES (CON BUSCADOR EN MACROS) ==========
 function openModal(id){
   document.getElementById(id).classList.add('show');
   if(id==='settingsModal') populateSettings();
@@ -2203,7 +2063,7 @@ function saveSettings(){
   if(recognition) recognition.lang=cfg.lang; saveState(); applyFontSettings(); closeModal('settingsModal'); checkGroq(); speak('Configuración guardada.'); 
 }
 
-// ========== MACROS ==========
+// ========== MACROS (CON BÚSQUEDA Y ORDEN ALFABÉTICO) ==========
 function renderMacroList(){
   const list = document.getElementById('macroList');
   if (!list) return;
@@ -2252,6 +2112,76 @@ function clearConversation(){ const conv=document.getElementById('conversation')
 function addMsg(role,text){ const conv=document.getElementById('conversation'); const ti=document.getElementById('typingIndicator'); const div=document.createElement('div'); div.className=`msg ${role}`; const ts=new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}); div.innerHTML=`<div class="msg-avatar">${role==='jarvis'?'⚡':'👤'}</div><div class="msg-body"><div class="msg-label">${role==='jarvis'?'J.A.R.V.I.S':userName()} — ${ts}</div><div class="msg-text">${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div></div>`; conv.insertBefore(div,ti); div.scrollIntoView({behavior:'smooth',block:'nearest'}); }
 function userName(){ return currentUser?(users[currentUser]?.name||'TÚ').toUpperCase():'TÚ'; }
 function greet(){ const part = new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches'); const name = currentUser ? users[currentUser].name : ''; speak(name ? `${part}, ${name}. Soy JARVIS. Sistema listo.` : `${part}. Soy JARVIS. Sistema listo.`); }
+
+// ========== PROCESAMIENTO DE COMANDOS (SIN WAKE WORD) ==========
+async function processCommand(text) {
+  if (!text || isProcessing) return;
+  const trimmed = text.trim();
+  if (!trimmed) return;
+
+  // Siempre mostramos lo que el usuario dice
+  addMsg('user', trimmed);
+
+  try {
+    if (window.pendingWorkResponse) {
+      processWorkResponse(window.pendingWorkResponse, trimmed);
+      window.pendingWorkResponse = null;
+      return;
+    }
+    if (parseAgendarCommand(trimmed)) return;
+
+    const userName = currentUser ? users[currentUser].name : 'señor';
+    const nameMatch = trimmed.match(/me llamo (\w+)|mi nombre es (\w+)|soy (\w+)/i);
+    if (nameMatch && !currentUser) {
+      const name = (nameMatch[1]||nameMatch[2]||nameMatch[3]);
+      registerUser(name);
+      speak(`Encantado, ${name}.`);
+      return;
+    }
+    const changeNameMatch = trimmed.match(/cambia mi nombre a (\w+)|cámbiame el nombre a (\w+)/i);
+    if (changeNameMatch && sessionActive) {
+      const newName = (changeNameMatch[1] || changeNameMatch[2]);
+      if (newName) {
+        if (currentUser) {
+          const oldName = users[currentUser].name;
+          const newId = newName.toLowerCase();
+          if (currentUser !== newId) {
+            users[newId] = { ...users[currentUser], name: newName };
+            delete users[currentUser];
+            currentUser = newId;
+          } else {
+            users[currentUser].name = newName;
+          }
+          saveState();
+          updateUserBadge();
+          speak(`He cambiado su nombre de ${oldName} a ${newName}.`);
+        } else {
+          registerUser(newName);
+        }
+      }
+      return;
+    }
+
+    const macro = matchMacro(trimmed);
+    if (macro) { executeMacro(macro, trimmed); return; }
+
+    const built = parseBuiltIn(trimmed);
+    if (built !== null) {
+      if (built) speak(built);
+      return;
+    }
+
+    showTyping(true);
+    let resp = await askGroq(trimmed, userName);
+    showTyping(false);
+    if (!resp) resp = `Entendido, ${userName}. No puedo procesar eso.`;
+    speak(resp);
+  } catch(e) {
+    console.error(e);
+    speak('Ocurrió un error.');
+  }
+}
+function showTyping(show){ document.getElementById('typingIndicator').style.display=show?'flex':'none'; }
 
 // ========== INICIALIZACIÓN ==========
 async function initApp() {
