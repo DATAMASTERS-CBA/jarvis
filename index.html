@@ -1110,6 +1110,10 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// ========== IDENTIFICADOR ÚNICO DEL DISPOSITIVO ==========
+const DEVICE_ID = 'device_' + Math.random().toString(36).substr(2, 9);
+let isRemoteSpeak = false;  // bandera para evitar bucles de voz
+
 // ========== CONFIGURACIÓN LOCAL ==========
 const DEFAULT_CONFIG = { 
   groqKey: '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', 
@@ -1185,8 +1189,8 @@ function setMicState(state) {
   }
 }
 
-// ========== FUNCIONES DE SINCRONIZACIÓN CON FIREBASE ==========
-async function syncDataToFirebase() {
+// ========== FUNCIONES DE SINCRONIZACIÓN CON FIREBASE (MEJORADAS) ==========
+async function syncDataToFirebase(action) {
   const bridgeLabel = document.getElementById('bridgeLabel');
   const bridgeDot = document.getElementById('bridgeDot');
   bridgeLabel.textContent = 'SINCRONIZANDO...';
@@ -1203,10 +1207,17 @@ async function syncDataToFirebase() {
       currentUser: currentUser,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
+    if (action) {
+      data._lastAction = {
+        ...action,
+        deviceId: DEVICE_ID,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      };
+    }
     await db.collection('users').doc('jarvis_data').set(data, { merge: true });
     bridgeLabel.textContent = 'SINCRONIZADO';
     bridgeDot.className = 'dot green';
-    console.log('✅ Datos sincronizados con Firebase');
+    console.log('✅ Datos sincronizados con Firebase' + (action ? ' (acción: ' + action.type + ')' : ''));
     return true;
   } catch (e) {
     console.warn('⚠️ Error al sincronizar con Firebase:', e);
@@ -1216,6 +1227,130 @@ async function syncDataToFirebase() {
   }
 }
 
+// Función para guardar solo el mensaje de voz (sin sobreescribir el resto)
+function syncSpeak(text) {
+  if (isRemoteSpeak) return; // no propagar si es remoto
+  const data = {
+    _lastSpeak: {
+      text: text,
+      deviceId: DEVICE_ID,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    }
+  };
+  db.collection('users').doc('jarvis_data').update(data).catch(e => console.warn('Error al sincronizar speak:', e));
+}
+
+// ========== CARGA DESDE FIREBASE CON LISTENER EN TIEMPO REAL ==========
+let firestoreUnsubscribe = null;
+
+function setupFirestoreListener() {
+  if (firestoreUnsubscribe) {
+    firestoreUnsubscribe();
+    firestoreUnsubscribe = null;
+  }
+  firestoreUnsubscribe = db.collection('users').doc('jarvis_data')
+    .onSnapshot((doc) => {
+      if (!doc.exists) return;
+      const data = doc.data();
+      
+      // Verificar si el cambio fue originado por este mismo dispositivo
+      const lastAction = data._lastAction;
+      const lastSpeak = data._lastSpeak;
+      
+      // Procesar acción remota (si existe y no es de este dispositivo)
+      if (lastAction && lastAction.deviceId && lastAction.deviceId !== DEVICE_ID) {
+        // Actualizar datos locales con los datos remotos
+        if (data.macros) macros = data.macros;
+        if (data.settings) cfg = { ...DEFAULT_CONFIG, ...data.settings };
+        if (data.users) users = data.users;
+        if (data.tasks) tasks = data.tasks;
+        if (data.workConfig) workConfig = { ...workConfig, ...data.workConfig };
+        if (data.knowledgeDB) knowledgeDB = data.knowledgeDB;
+        if (data.calendarEvents) calendarEvents = data.calendarEvents;
+        if (data.currentUser) {
+          currentUser = data.currentUser;
+          localStorage.setItem('jarvis_current_user', currentUser);
+        }
+        // Aplicar cambios en UI
+        applyFontSettings();
+        setTheme(cfg.theme);
+        updateUserBadge();
+        renderTasks();
+        renderResponsesLog();
+        renderCalendar();
+        // Guardar en localStorage para persistencia local
+        localStorage.setItem('jarvis_cfg', JSON.stringify(cfg));
+        localStorage.setItem('jarvis_macros', JSON.stringify(macros));
+        localStorage.setItem('jarvis_users', JSON.stringify(users));
+        localStorage.setItem('jarvis_tasks', JSON.stringify(tasks));
+        localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
+        localStorage.setItem('jarvis_knowledge', JSON.stringify(knowledgeDB));
+        localStorage.setItem('jarvis_calendar_events', JSON.stringify(calendarEvents));
+        console.log('🔄 Datos actualizados desde Firebase (acción remota)');
+      }
+      
+      // Procesar mensaje de voz remoto
+      if (lastSpeak && lastSpeak.deviceId && lastSpeak.deviceId !== DEVICE_ID && lastSpeak.text) {
+        isRemoteSpeak = true;
+        // Hablar sin volver a guardar
+        const originalSpeak = window.speak;
+        if (typeof originalSpeak === 'function') {
+          // Evitar que speak guarde de nuevo
+          window.speak = function(text) {
+            if (!text) return;
+            // Llamar a la lógica de síntesis sin guardar
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+            duckMic();
+            if (recognition) {
+              try { recognition.stop(); } catch (e) {}
+            }
+            isSpeaking = true;
+            isSpeakingRecognition = true;
+            setMicState('speaking');
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = cfg.lang;
+            utterance.rate = cfg.speed;
+            utterance.pitch = cfg.pitch;
+            const voice = getVoice();
+            if (voice) utterance.voice = voice;
+            const finishSpeaking = () => {
+              isSpeaking = false;
+              setTimeout(() => {
+                unduckMic();
+                isSpeakingRecognition = false;
+                if (sessionActive && isMicReady && recognition) {
+                  try { recognition.start(); } catch (e) {}
+                }
+                setMicState('listening');
+              }, 2000);
+            };
+            utterance.onend = finishSpeaking;
+            utterance.onerror = finishSpeaking;
+            window.speechSynthesis.speak(utterance);
+            // No añadir mensaje de voz remoto al chat para no duplicar
+          };
+          window.speak(lastSpeak.text);
+          // Restaurar speak original
+          window.speak = originalSpeak;
+        } else {
+          // Fallback: si no existe, usar la función global
+          speak(lastSpeak.text);
+        }
+        isRemoteSpeak = false;
+        console.log('🔊 Voz remota repetida:', lastSpeak.text);
+      }
+      
+      // Actualizar estado de sincronización
+      document.getElementById('bridgeLabel').textContent = 'SINCRONIZADO';
+      document.getElementById('bridgeDot').className = 'dot green';
+    }, (error) => {
+      console.warn('⚠️ Error en listener de Firebase:', error);
+      document.getElementById('bridgeLabel').textContent = 'OFFLINE';
+      document.getElementById('bridgeDot').className = 'dot red';
+    });
+}
+
+// ========== FUNCIÓN DE CARGA INICIAL DESDE FIREBASE ==========
 async function loadDataFromFirebase() {
   try {
     const doc = await db.collection('users').doc('jarvis_data').get();
@@ -1298,7 +1433,8 @@ function editUserName() {
       }
       saveState();
       updateUserBadge();
-      speak(`He cambiado su nombre de ${oldName} a ${trimmed}.`);
+      const msg = `He cambiado su nombre de ${oldName} a ${trimmed}.`;
+      speak(msg);
     } else {
       registerUser(trimmed);
       speak(`Encantado, ${trimmed}.`);
@@ -1404,7 +1540,7 @@ function loadCalendarEvents() {
 }
 function saveCalendarEvents() { 
   localStorage.setItem('jarvis_calendar_events', JSON.stringify(calendarEvents));
-  syncDataToFirebase();
+  syncDataToFirebase({ type: 'calendar_update' });
 }
 function getEventsForDate(date) { const dateStr = date.toISOString().split('T')[0]; return calendarEvents.filter(e => e.date === dateStr); }
 function addCalendarEvent() {
@@ -1418,7 +1554,8 @@ function addCalendarEvent() {
   renderCalendar();
   renderEventsForDate(selectedCalendarDate);
   document.getElementById('eventTitle').value = ''; document.getElementById('eventDesc').value = ''; document.getElementById('eventTime').value = ''; document.getElementById('addEventForm').style.display = 'none';
-  speak(`Evento "${title}" agregado para el ${dateStr}.`);
+  const msg = `Evento "${title}" agregado para el ${dateStr}.`;
+  speak(msg);
 }
 function deleteCalendarEvent(eventId) {
   if (confirm('¿Eliminar este evento?')) {
@@ -1636,7 +1773,9 @@ function startRecognition() {
   try { recognition.start(); } catch(e) { console.warn(e); }
 }
 
-// ========== SÍNTESIS DE VOZ ==========
+// ========== SÍNTESIS DE VOZ (CON REPLICACIÓN EN ESPEJO) ==========
+const originalSpeak = window.speak || function() {};
+
 function speak(text) {
   if (!text) return;
   if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -1668,7 +1807,6 @@ function speak(text) {
           }, 1000);
         }
       }
-      // Siempre volver a estado de escucha
       setMicState('listening');
     }, 2000);
   };
@@ -1676,7 +1814,14 @@ function speak(text) {
   utterance.onerror = finishSpeaking;
   window.speechSynthesis.speak(utterance);
   addMsg('jarvis', text);
+  
+  // Replicar voz a otros dispositivos (espejo)
+  if (!isRemoteSpeak) {
+    syncSpeak(text);
+  }
 }
+window.speak = speak;
+
 function stopSpeaking() {
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   isSpeaking = false;
@@ -1741,7 +1886,7 @@ function saveWorkConfig() {
   workConfig.workDays = [];
   document.querySelectorAll('.workday-check:checked').forEach(cb => { workConfig.workDays.push(parseInt(cb.value)); });
   localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
-  syncDataToFirebase();
+  syncDataToFirebase({ type: 'work_config_update' });
   speak('Configuración laboral guardada correctamente.');
 }
 function addWorkResponse(eventType, responseText) {
@@ -1749,7 +1894,7 @@ function addWorkResponse(eventType, responseText) {
   workConfig.responses.unshift({ id: Date.now(), type: eventType, response: responseText, timestamp: now.toISOString(), time: now.toLocaleTimeString('es-ES') });
   if (workConfig.responses.length > 50) workConfig.responses.pop();
   localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
-  syncDataToFirebase();
+  syncDataToFirebase({ type: 'work_response_added' });
   renderResponsesLog();
 }
 function renderResponsesLog() {
@@ -1798,7 +1943,7 @@ function processWorkResponse(eventType, responseText) {
   if (statusDiv) { statusDiv.className = 'work-hour-status completed'; statusDiv.innerHTML = `✅ ${responseText.substring(0, 30)}`; }
   workConfig.alerts[eventType] = false;
   localStorage.setItem('jarvis_work_config', JSON.stringify(workConfig));
-  syncDataToFirebase();
+  syncDataToFirebase({ type: 'work_response_processed' });
   speak(`Registrado: ${responseText}`);
   addMsg('jarvis', `✅ Respuesta registrada: ${responseText}`);
   window.pendingWorkResponse = null;
@@ -1823,7 +1968,7 @@ function loadTasks() {
 }
 function saveTasks() { 
   localStorage.setItem('jarvis_tasks', JSON.stringify(tasks));
-  syncDataToFirebase().catch(e => console.warn('Sync falló, pero datos locales guardados:', e));
+  syncDataToFirebase({ type: 'tasks_update' });
 }
 
 // ========== NUEVA FUNCIÓN: ORDENAR Y RENDERIZAR TAREAS ==========
@@ -1971,7 +2116,7 @@ function saveState() {
   localStorage.setItem('jarvis_macros',JSON.stringify(macros)); 
   localStorage.setItem('jarvis_users',JSON.stringify(users));
   localStorage.setItem('jarvis_current_user', currentUser || '');
-  syncDataToFirebase().catch(e => console.warn('Sync falló, pero datos locales guardados:', e));
+  syncDataToFirebase({ type: 'state_update' });
 }
 function setTheme(t) { document.documentElement.setAttribute('data-theme',t); document.querySelectorAll('.theme-dot').forEach(d=>d.classList.toggle('active',d.dataset.t===t)); cfg.theme=t; saveState(); }
 function accionMusica() { window.open(cfg.musicUrl || DEFAULT_CONFIG.musicUrl, '_blank'); speak('Reproduciendo música.'); }
@@ -2107,7 +2252,7 @@ function refreshExportPreview(){ document.getElementById('exportPreview').value=
 function exportConfig(){ const data=JSON.stringify(getFullConfig(),null,2); const blob=new Blob([data],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='jarvis-config.json'; a.click(); URL.revokeObjectURL(url); }
 function switchTab(tab){ document.getElementById('panelExport').style.display=tab==='export'?'':'none'; document.getElementById('panelImport').style.display=tab==='import'?'':'none'; document.getElementById('tabExport').className=tab==='export'?'tab active':'tab'; document.getElementById('tabImport').className=tab==='import'?'tab active':'tab'; if(tab==='export') refreshExportPreview(); }
 function loadImportFile(e){ const file=e.target.files[0]; if(!file) return; const r=new FileReader(); r.onload=ev=>{ document.getElementById('importJson').value=ev.target.result; }; r.readAsText(file); }
-function importConfig(){ try{ const d=JSON.parse(document.getElementById('importJson').value); if(d.macros) macros=d.macros; if(d.settings) cfg={...DEFAULT_CONFIG,...d.settings}; if(d.users) users=d.users; if(d.tasks) tasks=d.tasks; if(d.workConfig) workConfig={...workConfig,...d.workConfig}; if(d.knowledgeDB) knowledgeDB=d.knowledgeDB; if(d.calendarEvents) calendarEvents=d.calendarEvents; saveState(); saveTasks(); localStorage.setItem('jarvis_work_config',JSON.stringify(workConfig)); localStorage.setItem('jarvis_knowledge',JSON.stringify(knowledgeDB)); localStorage.setItem('jarvis_calendar_events',JSON.stringify(calendarEvents)); syncDataToFirebase(); setTheme(cfg.theme); applyFontSettings(); closeModal('backupModal'); renderTasks(); renderResponsesLog(); checkGroq(); updateUserBadge(); speak('Configuración restaurada.'); }catch(e){ alert('JSON inválido'); } }
+function importConfig(){ try{ const d=JSON.parse(document.getElementById('importJson').value); if(d.macros) macros=d.macros; if(d.settings) cfg={...DEFAULT_CONFIG,...d.settings}; if(d.users) users=d.users; if(d.tasks) tasks=d.tasks; if(d.workConfig) workConfig={...workConfig,...d.workConfig}; if(d.knowledgeDB) knowledgeDB=d.knowledgeDB; if(d.calendarEvents) calendarEvents=d.calendarEvents; saveState(); saveTasks(); localStorage.setItem('jarvis_work_config',JSON.stringify(workConfig)); localStorage.setItem('jarvis_knowledge',JSON.stringify(knowledgeDB)); localStorage.setItem('jarvis_calendar_events',JSON.stringify(calendarEvents)); syncDataToFirebase({ type: 'import_restore' }); setTheme(cfg.theme); applyFontSettings(); closeModal('backupModal'); renderTasks(); renderResponsesLog(); checkGroq(); updateUserBadge(); speak('Configuración restaurada.'); }catch(e){ alert('JSON inválido'); } }
 function clearConversation(){ const conv=document.getElementById('conversation'); conv.querySelectorAll('.msg:not(#typingIndicator)').forEach(m=>m.remove()); addMsg('jarvis','Chat limpiado.'); }
 function addMsg(role,text){ const conv=document.getElementById('conversation'); const ti=document.getElementById('typingIndicator'); const div=document.createElement('div'); div.className=`msg ${role}`; const ts=new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}); div.innerHTML=`<div class="msg-avatar">${role==='jarvis'?'⚡':'👤'}</div><div class="msg-body"><div class="msg-label">${role==='jarvis'?'J.A.R.V.I.S':userName()} — ${ts}</div><div class="msg-text">${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div></div>`; conv.insertBefore(div,ti); div.scrollIntoView({behavior:'smooth',block:'nearest'}); }
 function userName(){ return currentUser?(users[currentUser]?.name||'TÚ').toUpperCase():'TÚ'; }
@@ -2192,6 +2337,9 @@ async function initApp() {
   
   await loadDataFromFirebase();
   
+  // Configurar listener en tiempo real
+  setupFirestoreListener();
+  
   setTheme(cfg.theme || 'arc-blue');
   applyFontSettings();
   updateUserBadge();
@@ -2199,8 +2347,9 @@ async function initApp() {
   renderResponsesLog();
   renderCalendar();
   
+  // Sincronización periódica (sin acciones, solo para mantener)
   setInterval(() => {
-    syncDataToFirebase();
+    syncDataToFirebase(); // sin acción
   }, 60000);
 
   const hasPermission = localStorage.getItem('jarvis_mic_permission') === 'granted';
